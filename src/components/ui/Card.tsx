@@ -1,33 +1,60 @@
 import { useMemo, type PropsWithChildren } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 
-import { useColors } from '@/hooks'
-import { spacing, borderRadius, type Colors } from '@/lib'
+import { useColors, useResponsive } from '@/hooks'
+import { spacing, borderRadius, hardShadow, thannuColors, strokeWidth, type Colors } from '@/lib'
+
+type CardVariant = 'default' | 'brutalist'
 
 type CardProps = PropsWithChildren<{
   style?: StyleProp<ViewStyle>
+  /**
+   * `default`  — standard themed card (matches existing design system)
+   * `brutalist` — Thannu neo-brutalist card: white bg + ink border + hard shadow
+   */
+  variant?: CardVariant
 }>
 
-const createStyles = (colors: Colors) =>
+const createStyles = (colors: Colors, isSmall: boolean) =>
   StyleSheet.create({
     card: {
-      padding: spacing.lg,
+      padding: isSmall ? spacing.md : spacing.lg,
       borderRadius: borderRadius.lg,
       borderWidth: 1,
       borderColor: colors.border,
       backgroundColor: colors.surface,
-      gap: spacing.md,
+      gap: isSmall ? spacing.sm : spacing.md,
+    },
+    brutalist: {
+      padding: isSmall ? spacing.md : spacing.lg,
+      borderRadius: 22, // thannuRadius.lg
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
+      backgroundColor: colors.surface,
+      gap: isSmall ? spacing.sm : spacing.md,
+      shadowColor: colors.text,
+      shadowOffset: { width: 4, height: 4 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 5,
     },
   })
 
 /**
- * Surface container — a themed panel that groups related content. The starting
- * point for whatever card treatment your design system calls for (elevation,
- * radii, borders all live here and in theme.ts).
+ * Surface container. Two variants:
+ * - `default` — adapts to the current theme (light/dark).
+ * - `brutalist` — Thannu neo-brutalist: white card, ink border, hard 4×4 shadow.
+ *
+ * Padding shrinks slightly on xs/sm screens.
  */
-export function Card({ children, style }: CardProps) {
+export function Card({ children, style, variant = 'default' }: CardProps) {
   const colors = useColors()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { isSmall } = useResponsive()
+  const styles = useMemo(() => createStyles(colors, isSmall), [colors, isSmall])
 
-  return <View style={[styles.card, style]}>{children}</View>
+  return (
+    <View style={[variant === 'brutalist' ? styles.brutalist : styles.card, style]}>
+      {children}
+    </View>
+  )
 }

@@ -7,7 +7,7 @@ import {
   type TextStyle,
 } from 'react-native'
 
-import { useColors } from '@/hooks'
+import { useColors, useResponsive } from '@/hooks'
 import { Fonts, fontSize, fontWeight, type Colors } from '@/lib'
 
 type TextVariant = 'h1' | 'h2' | 'h3' | 'body' | 'bodySmall' | 'caption' | 'label' | 'code'
@@ -30,46 +30,53 @@ const weightStyles: Record<TextWeight, TextStyle> = StyleSheet.create({
   bold: { fontWeight: fontWeight.bold },
 })
 
-const createStyles = (colors: Colors) => {
+const createStyles = (colors: Colors, scale: (base: number) => number) => {
   const variants = StyleSheet.create({
     h1: {
-      fontSize: fontSize['3xl'],
+      fontSize: scale(fontSize['3xl']),
       fontWeight: fontWeight.bold,
       color: colors.text,
+      lineHeight: scale(fontSize['3xl']) * 1.15,
     },
     h2: {
-      fontSize: fontSize['2xl'],
+      fontSize: scale(fontSize['2xl']),
       fontWeight: fontWeight.bold,
       color: colors.text,
+      lineHeight: scale(fontSize['2xl']) * 1.2,
     },
     h3: {
-      fontSize: fontSize.xl,
+      fontSize: scale(fontSize.xl),
       fontWeight: fontWeight.semibold,
       color: colors.text,
+      lineHeight: scale(fontSize.xl) * 1.3,
     },
     body: {
-      fontSize: fontSize.base,
+      fontSize: scale(fontSize.base),
       fontWeight: fontWeight.normal,
       color: colors.text,
+      lineHeight: scale(fontSize.base) * 1.5,
     },
     bodySmall: {
-      fontSize: fontSize.sm,
+      fontSize: scale(fontSize.sm),
       fontWeight: fontWeight.normal,
       color: colors.text,
+      lineHeight: scale(fontSize.sm) * 1.5,
     },
     caption: {
-      fontSize: fontSize.xs,
+      fontSize: scale(fontSize.xs),
       fontWeight: fontWeight.normal,
       color: colors.secondary,
+      lineHeight: scale(fontSize.xs) * 1.4,
     },
     label: {
-      fontSize: fontSize.sm,
+      fontSize: scale(fontSize.sm),
       fontWeight: fontWeight.medium,
       color: colors.text,
+      lineHeight: scale(fontSize.sm) * 1.4,
     },
     code: {
       fontFamily: Fonts.mono,
-      fontSize: fontSize.xs,
+      fontSize: scale(fontSize.xs),
       fontWeight: fontWeight.medium,
       color: colors.text,
     },
@@ -88,6 +95,11 @@ const createStyles = (colors: Colors) => {
   return { variants, colorStyles }
 }
 
+/**
+ * Themed text component. Font sizes scale slightly with the device width
+ * so text feels proportionate on both iPhone SE and Pro Max screens.
+ * `allowFontScaling` is enabled (capped at 1.3× for headings per design.md §11).
+ */
 export function Text({
   variant = 'body',
   color,
@@ -97,10 +109,16 @@ export function Text({
   ...props
 }: TextProps) {
   const colors = useColors()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { scale } = useResponsive()
+  const styles = useMemo(() => createStyles(colors, scale), [colors, scale])
+
+  // Headings cap at 1.3× Dynamic Type to prevent layout breaks (design.md §11)
+  const isHeading = variant === 'h1' || variant === 'h2' || variant === 'h3'
 
   return (
     <RNText
+      allowFontScaling
+      maxFontSizeMultiplier={isHeading ? 1.3 : 1.5}
       style={[
         styles.variants[variant],
         color && styles.colorStyles[color],

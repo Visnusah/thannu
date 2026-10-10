@@ -11,8 +11,8 @@ import {
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
-import { useColors } from '@/hooks'
-import { spacing, fontSize, fontWeight, borderRadius, type Colors } from '@/lib'
+import { useColors, useResponsive } from '@/hooks'
+import { spacing, fontSize, fontWeight, borderRadius, minTouchTarget, type Colors } from '@/lib'
 
 type InputProps = TextInputProps & {
   ref?: Ref<TextInput>
@@ -25,13 +25,13 @@ type InputProps = TextInputProps & {
   onRightIconPress?: () => void
 }
 
-const createStyles = (colors: Colors) =>
+const createStyles = (colors: Colors, isSmall: boolean) =>
   StyleSheet.create({
     container: {
       width: '100%',
     },
     label: {
-      fontSize: fontSize.sm,
+      fontSize: isSmall ? fontSize.xs + 1 : fontSize.sm,
       fontWeight: fontWeight.medium,
       color: colors.text,
       marginBottom: spacing.xs,
@@ -43,6 +43,7 @@ const createStyles = (colors: Colors) =>
       borderColor: colors.border,
       borderRadius: borderRadius.md,
       backgroundColor: colors.surface,
+      minHeight: minTouchTarget,
     },
     inputContainerFocused: {
       borderColor: colors.accent,
@@ -51,16 +52,21 @@ const createStyles = (colors: Colors) =>
       borderColor: colors.danger,
     },
     leftIcon: {
-      paddingLeft: spacing.md,
+      paddingLeft: isSmall ? spacing.sm : spacing.md,
     },
     input: {
       flex: 1,
-      padding: spacing.md,
-      fontSize: fontSize.base,
+      paddingVertical: isSmall ? spacing.sm : spacing.md,
+      paddingHorizontal: isSmall ? spacing.sm : spacing.md,
+      fontSize: isSmall ? fontSize.sm : fontSize.base,
       color: colors.text,
     },
     rightIconButton: {
-      padding: spacing.md,
+      padding: isSmall ? spacing.sm : spacing.md,
+      minWidth: minTouchTarget,
+      minHeight: minTouchTarget,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
     hint: {
       fontSize: fontSize.xs,
@@ -74,6 +80,11 @@ const createStyles = (colors: Colors) =>
     },
   })
 
+/**
+ * Themed text input with label, hint, error states, and optional icons.
+ * Enforces a 44px minimum height for the input row (design.md §3.3).
+ * Font sizes and padding scale down slightly on xs/sm screens.
+ */
 export function Input({
   ref,
   label,
@@ -87,7 +98,8 @@ export function Input({
   ...props
 }: InputProps) {
   const colors = useColors()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const { isSmall } = useResponsive()
+  const styles = useMemo(() => createStyles(colors, isSmall), [colors, isSmall])
   const [isFocused, setIsFocused] = useState(false)
   const [isSecureVisible, setIsSecureVisible] = useState(false)
 
@@ -107,7 +119,12 @@ export function Input({
   return (
     <View style={[styles.container, containerStyle]}>
       {label && (
-        <Text style={styles.label} accessibilityRole="text">
+        <Text
+          style={styles.label}
+          accessibilityRole="text"
+          allowFontScaling
+          maxFontSizeMultiplier={1.3}
+        >
           {label}
         </Text>
       )}
@@ -121,7 +138,7 @@ export function Input({
         {leftIcon && (
           <Ionicons
             name={leftIcon}
-            size={20}
+            size={isSmall ? 18 : 20}
             color={colors.tertiary}
             style={styles.leftIcon}
           />
@@ -134,6 +151,8 @@ export function Input({
           accessibilityLabel={label || props.placeholder}
           accessibilityHint={hint}
           accessibilityState={{ disabled: props.editable === false }}
+          allowFontScaling
+          maxFontSizeMultiplier={1.3}
           onFocus={handleFocus}
           onBlur={handleBlur}
           {...props}
@@ -147,7 +166,7 @@ export function Input({
           >
             <Ionicons
               name={isSecureVisible ? 'eye-off-outline' : 'eye-outline'}
-              size={20}
+              size={isSmall ? 18 : 20}
               color={colors.tertiary}
             />
           </Pressable>
@@ -159,17 +178,17 @@ export function Input({
             accessibilityRole="button"
             disabled={!onRightIconPress}
           >
-            <Ionicons name={rightIcon} size={20} color={colors.tertiary} />
+            <Ionicons name={rightIcon} size={isSmall ? 18 : 20} color={colors.tertiary} />
           </Pressable>
         )}
       </View>
       {error && (
-        <Text style={styles.error} accessibilityRole="alert">
+        <Text style={styles.error} accessibilityRole="alert" allowFontScaling maxFontSizeMultiplier={1.5}>
           {error}
         </Text>
       )}
       {hint && !error && (
-        <Text style={styles.hint} accessibilityRole="text">
+        <Text style={styles.hint} accessibilityRole="text" allowFontScaling maxFontSizeMultiplier={1.5}>
           {hint}
         </Text>
       )}

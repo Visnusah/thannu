@@ -121,3 +121,61 @@ export const Fonts = Platform.select({
 export const BottomTabInset = Platform.select({ ios: 50, android: 80 }) ?? 0
 export const TopTabInset = Platform.select({ web: 72 }) ?? 0
 export const MaxContentWidth = 800
+
+// ─── Thannu design tokens ─────────────────────────────────────────────────────
+// Full neo-brutalist palette from design.md §3.1
+export const thannuColors = {
+  ink: '#121212',
+  paper: '#F7F6F2',
+  cream: '#FFF7E6',
+  white: '#FFFFFF',
+  sun: '#FFC93C',
+  sunSoft: '#FFE29A',
+  blue: '#3B7BE8',
+  orange: '#FF6B1A',
+  mint: '#19BE95',
+  mintSoft: '#E3F7EF',
+  lime: '#A3E635',
+  coral: '#FF5A5F',
+  violet: '#7C4DFF',
+  violetSoft: '#ECE5FF',
+  pink: '#FFB4CC',
+  brown: '#8B5A2B',
+  tan: '#EBD9A8',
+  slate: '#5E7A9E',
+  textMuted: '#5B5B5B',
+  line: '#D9D7D0',
+} as const
+
+// Hard offset black drop-shadow (no blur) per design.md §3.3
+export const hardShadow = {
+  md: {
+    shadowColor: '#121212',
+    shadowOffset: { width: 4, height: 4 },
+    shadowOpacity: 1 as const,
+    shadowRadius: 0,
+    elevation: 5,
+  },
+  sm: {
+    shadowColor: '#121212',
+    shadowOffset: { width: 2, height: 2 },
+    shadowOpacity: 1 as const,
+    shadowRadius: 0,
+    elevation: 3,
+  },
+} as const
+
+// Thick near-black border widths per design.md §3.3
+export const strokeWidth = { card: 2.5, chip: 2 } as const
+
+// Thannu extended radii — cards get larger rounding
+export const thannuRadius = { sm: 10, md: 16, lg: 22, pill: 999 } as const
+
+// Minimum tappable area per design.md §3.3
+export const minTouchTarget = 44
+
+// Responsive horizontal screen padding per device size
+export const screenPaddingH = { xs: 16, sm: 18, md: 20, lg: 22 } as const
+
+// Grid gap for 2-column collection grids
+export const gridGap = 14

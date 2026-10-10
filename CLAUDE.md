@@ -1,166 +1,407 @@
-# CLAUDE.md
+# CLAUDE.md — Thannu
 
-Expo SDK 56 app — React Native 0.85, React 19.2.3, TypeScript (strict), file-based routing via expo-router. Runs on iOS, Android, and web with no backend. Uses **development builds** — Expo Go is NOT supported and must never be suggested (the app pre-installs native modules, and the Expo Go app in the stores lags behind SDK 56).
+Project memory for Claude Code. Read this first, then `design.md` for all UI specs.
 
-## App identity
+## 1. Project in one paragraph
 
-This app is **thannu**. It is already configured:
-- `app.json`: `name` and `slug` are `thannu`, `scheme` is `thannu`, `ios.bundleIdentifier` and `android.package` are `com.visnusah.thannu`
-- `package.json`: `name` is `thannu`
+**Thannu** is an **iPhone-only** app (built with **Expo Go**) that centralizes posts/links saved from Instagram, TikTok, YouTube, X, Reddit, Pinterest and the web — and **reminds you to actually revisit them**. Differentiators: (1) **reminders + notifications** on saves, (2) **priority flags on folders** that control reminder cadence. Backend: **Firebase** (Auth + Firestore). UI language: colorful neo-brutalist "sticker" style (see `design.md`).
 
-No renaming is needed. Start building features directly.
+**Who:** casual savers, shoppers, students, creators whose "Saved" tabs are graveyards.
+**Why:** competitors (Tuckii etc.) solve *storage and search*; Thannu solves *forgetting*.
+**What/How:** share/paste → organize into collections → priority + reminders → nudge → act.
 
-## Expo has changed — check the docs first
+## 2. Hard constraints (Expo Go, iPhone)
 
-Your training data on Expo is likely stale. Consult the official docs before writing code — do not use patterns from older SDKs from memory:
+Expo Go can only run native code that ships inside Expo Go. Therefore:
 
-- https://docs.expo.dev/llms.txt — index of all AI-formatted documentation files
-- https://docs.expo.dev/llms-full.txt — complete Expo docs (Expo Router, development process)
-- https://docs.expo.dev/llms-sdk.txt — complete Expo SDK module docs
-- https://docs.expo.dev/versions/v56.0.0/ — versioned docs for this exact SDK
+| Do | Don't |
+|---|---|
+| Firebase **JS SDK** (`firebase` modular v10+) | `@react-native-firebase/*` (needs dev build) |
+| `expo-notifications` **local** notifications | Remote push / APNs setup (not in MVP) |
+| `expo-clipboard` paste-to-save | iOS **Share Extension** (needs dev build — see §12) |
+| Anonymous + email/password auth | Google / Apple sign-in (needs dev build for reliable setup) |
+| `expo-router`, `expo-haptics`, `expo-image`, `expo-linking` | Any library with custom native modules not in Expo Go |
+| `expo-document-picker`, `expo-file-system`, `expo-sharing` for import/export | Payments (RevenueCat/StoreKit need dev build) → stub paywall |
 
-## Development builds & EAS
+Target: iOS only. Don't write Android-specific code or Platform checks for Android. Use iOS hard-shadow props directly (`shadowRadius: 0`).
 
-The app runs in a development build (`expo-dev-client`), installed once per simulator/device:
+## 3. Stack
 
-- **Local build**: `npm run ios` / `npm run android` (`expo run:*`). Needs Xcode / Android Studio. Native projects are generated on the fly; `ios/` and `android/` stay gitignored (CNG).
-- **Cloud build**: needs the EAS CLI installed globally — `npm install -g eas-cli` (the package is `eas-cli`; `npx eas` does not work). `eas init` links the project to the user's Expo account (it writes `extra.eas.projectId` and `owner` into `app.json` — let `eas init` write them; never hardcode them by hand). Then `eas build --profile development` and install the build on the device (internal distribution). Build profiles live in `eas.json` — there are exactly three: `development`, `production` (store submission), and `release` (a production-grade Android `.apk` for internal distribution — `eas build --platform android --profile release` — installable and shareable directly, unlike the Play-Store-only `.aab` that `production` produces on Android).
-- **Day-to-day**: once a build is installed, `npm start` is all that's needed. A native rebuild is only required when adding a package with native code that isn't already pre-installed (see Installed libraries — the common ones are).
+- Expo (latest SDK supported by the current Expo Go from the App Store) + **TypeScript (strict)**
+- **Expo Router** (file-based, stack navigation, no tab bar)
+- State: **Zustand** (UI/session) + Firestore `onSnapshot` for data
+- Firebase: Auth (anonymous → linkable to email), Firestore
+- Lists: `@shopify/flash-list`
+- Animation: `react-native-reanimated`, `react-native-gesture-handler`
+- Icons: `lucide-react-native` + `react-native-svg`, brand glyphs from `@expo/vector-icons`
+- Fonts: `@expo-google-fonts/bricolage-grotesque`, `@expo-google-fonts/plus-jakarta-sans`
+- Dates: `date-fns`
+- Validation: `zod`
 
-## Commands
+### Setup commands
 
-- `npm start` — start the dev server; connects to the installed development build (press `w` for web)
-- `npm run ios` / `npm run android` — compile and install the native app locally (first run, or after adding a new native module)
-- `npm run lint` — ESLint via `expo lint`
-- `npm run typecheck` — TypeScript check via `tsc --noEmit`
+```bash
+npx create-expo-app@latest thannu --template blank-typescript
+cd thannu
+npx expo install expo-router expo-notifications expo-haptics expo-clipboard expo-image \
+  expo-linking expo-font expo-constants expo-document-picker expo-file-system expo-sharing \
+  expo-splash-screen expo-status-bar react-native-reanimated react-native-gesture-handler \
+  react-native-screens react-native-safe-area-context react-native-svg \
+  @react-native-async-storage/async-storage @shopify/flash-list \
+  @expo-google-fonts/bricolage-grotesque @expo-google-fonts/plus-jakarta-sans
+npm i firebase zustand zod date-fns lucide-react-native
+npx expo start        # scan QR with iPhone Camera → opens in Expo Go
+```
 
-Install libraries with `npx expo install <package>` — never plain `npm install` for runtime packages. It picks versions compatible with SDK 56.
+Always install Expo-compatible versions with `npx expo install`, not plain `npm i`, for Expo packages.
 
-## Project structure
+## 4. Folder structure
 
 ```
-src/
-├── app/                  # Expo Router file-based routing
-│   ├── _layout.tsx       # Root layout: ErrorBoundary, ThemeProvider, tabs, splash gating
-│   ├── index.tsx         # Home screen
-│   └── settings.tsx      # Settings screen (theme mode picker)
-├── components/
-│   ├── ui/               # UI primitives (Button, Card, Input, Text)
-│   ├── error/            # Error boundaries (ErrorBoundary, ScreenErrorBoundary)
-│   ├── AppTabs.tsx       # Tab bar (native tabs; AppTabs.web.tsx for web)
-│   └── Screen.tsx        # Shared screen scaffold (safe areas, tab insets, max width)
-├── hooks/                # Global hooks (useColors, useIsDark, useColorScheme)
-├── lib/                  # theme.ts (design tokens), storage.ts (AsyncStorage helpers)
-└── stores/               # Global Zustand stores (themeStore)
+thannu/
+├─ app/                          # Expo Router
+│  ├─ _layout.tsx                # fonts, auth gate, notification handlers
+│  ├─ index.tsx                  # Home
+│  ├─ onboarding.tsx
+│  ├─ today.tsx                  # due + priority backlog
+│  ├─ review.tsx                 # new saves inbox
+│  ├─ search.tsx
+│  ├─ settings.tsx
+│  ├─ paywall.tsx                # stub
+│  ├─ collection/[id].tsx
+│  ├─ link/[id].tsx
+│  ├─ save.tsx                   # formSheet
+│  ├─ collection-editor.tsx      # formSheet
+│  └─ remind.tsx                 # formSheet
+├─ src/
+│  ├─ design/                    # tokens.ts, fonts.ts
+│  ├─ components/                # Button, IconButton, Card, Chip, TagChip, Banner,
+│  │                             # CollectionCard, LinkCard, StatTile, PrioritySelector, …
+│  ├─ firebase/                  # config.ts, auth.ts, firestore.ts (typed converters)
+│  ├─ services/                  # collections.ts, links.ts, tags.ts, reminders.ts,
+│  │                             # metadata.ts, importExport.ts
+│  ├─ notifications/             # engine.ts, categories.ts, handlers.ts
+│  ├─ store/                     # session.ts, ui.ts
+│  ├─ hooks/                     # useCollections, useLinks, useDueLinks, useClipboardUrl
+│  ├─ types/                     # models.ts (entities), enums.ts
+│  └─ utils/                     # url.ts, hash.ts, dates.ts, parsers/{csv,html,json}.ts
+├─ firestore.rules
+├─ firestore.indexes.json
+├─ .env                          # EXPO_PUBLIC_FIREBASE_* (never commit)
+├─ design.md
+└─ CLAUDE.md
 ```
 
-- Path aliases: `@/*` → `src/*`, `@/assets/*` → `assets/*` (see `tsconfig.json`).
-- **Barrels are each folder's public API.** From outside a folder, import through its `index.ts` barrel — `@/components/ui`, `@/components/error`, `@/components` (shared components like `Screen`, `AppTabs`), `@/hooks`, `@/stores`, `@/lib`. Within a folder, use relative imports. When you add a module, export it from its folder's barrel.
-- Platform-specific files: `Component.web.tsx` overrides `Component.tsx` on web (see `AppTabs`, `useColorScheme`). Prefer this over inline `Platform.OS` branching for anything non-trivial.
-- New features with data logic go in `src/features/<feature>/` with hooks (e.g. `src/features/notes/hooks/useNotes.ts`), keeping screens thin.
+Use path alias `@/` → `src/` (tsconfig `paths`).
 
-## Theme system — CRITICAL
+## 5. Conventions
 
-**All colors, spacing, typography, and border radius values MUST come from `src/lib/theme.ts`.** Never use inline colors or hardcoded style values without explicit user approval.
+- TypeScript strict, **no `any`**. Zod-validate all data read from Firestore and imported files.
+- Components: function components, named exports, props typed. Styles via `StyleSheet.create` using tokens from `@/design/tokens` — **no hard-coded colors/sizes**.
+- Every pressable uses the shared `Pressable` wrapper with press-in animation + optional haptic.
+- Firestore access only through `src/services/*` (screens never call Firestore directly).
+- Timestamps: Firestore `Timestamp` in DB, `Date` in UI (convert in converters).
+- Soft delete (`deletedAt`) for links; hard delete only on "empty trash"/account deletion.
+- Batch writes ≤ 400 ops (Firestore limit 500).
+- Keep files < 300 lines; split components.
+- Commit style: `feat:`, `fix:`, `chore:`, `docs:`.
+- Do not add dependencies that aren't Expo Go compatible. If unsure, check Expo docs/directory first.
 
-Tokens: `lightColors` / `darkColors` (`background`, `surface`, `text`, `secondary`, `tertiary`, `border`, `primary`, `accent`, `danger`, `warning`, `success`, `onDanger`), `spacing` (xs–xl), `fontSize` (xs–3xl), `fontWeight`, `borderRadius` (sm/md/lg/full), `Fonts` (per-platform font stacks), and the layout constants `BottomTabInset`, `TopTabInset`, `MaxContentWidth`.
+## 6. Firebase setup
 
-Get theme-aware colors with the `useColors()` hook, and follow the `createStyles` pattern:
+`.env`:
+```
+EXPO_PUBLIC_FIREBASE_API_KEY=
+EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=
+EXPO_PUBLIC_FIREBASE_PROJECT_ID=
+EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=
+EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+EXPO_PUBLIC_FIREBASE_APP_ID=
+```
 
-```tsx
-import { useMemo } from 'react'
-import { StyleSheet, View } from 'react-native'
+`src/firebase/config.ts`:
+```ts
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeAuth, getReactNativePersistence } from 'firebase/auth';
+import { initializeFirestore } from 'firebase/firestore';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-import { useColors } from '@/hooks'
-import { spacing, borderRadius, type Colors } from '@/lib'
+const firebaseConfig = {
+  apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY!,
+  authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.EXPO_PUBLIC_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID!,
+};
 
-const createStyles = (colors: Colors) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colors.background,
-      padding: spacing.lg,
-    },
-    card: {
-      backgroundColor: colors.surface,
-      borderRadius: borderRadius.md,
-      borderColor: colors.border,
-    },
-  })
+const isNew = getApps().length === 0;
+export const app = isNew ? initializeApp(firebaseConfig) : getApp();
 
-function MyComponent() {
-  const colors = useColors()
-  const styles = useMemo(() => createStyles(colors), [colors])
+export const auth = isNew
+  ? initializeAuth(app, { persistence: getReactNativePersistence(AsyncStorage) })
+  : (await import('firebase/auth')).getAuth(app);
 
-  return <View style={styles.container}>…</View>
+// Long-polling avoids flaky WebChannel connections in Expo Go
+export const db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+```
+(If TypeScript complains about `getReactNativePersistence`, add a one-line `// @ts-ignore` — known typing gap. Avoid top-level await if the Metro target rejects it; use plain `getAuth` in a separate branch.)
+
+Firebase console to-do: create project → add iOS app (bundle id placeholder) → enable **Authentication → Anonymous** and **Email/Password** → create **Firestore (production mode)** → deploy rules and indexes below.
+
+**Known limits:** Firestore JS SDK in React Native has **no persistent offline cache** (memory only). Mitigate by caching last collections/links snapshot in AsyncStorage (zustand `persist`) so Home renders instantly offline.
+
+## 7. Data model (Firestore)
+
+All user data lives under `users/{uid}`. Doc IDs = Firestore auto IDs unless noted.
+
+### 7.1 Entities overview
+
+| Entity | Path | Purpose |
+|---|---|---|
+| **User** | `users/{uid}` | profile, plan, settings, counters |
+| **Collection** | `users/{uid}/collections/{collectionId}` | folder with color/icon/**priority**/cadence; supports nesting |
+| **Link** | `users/{uid}/links/{linkId}` | a saved post/link with metadata, tags, note, reminder info |
+| **Tag** | `users/{uid}/tags/{tagId}` | tag name, color, usage count (id = slug) |
+| **Reminder** | `users/{uid}/reminders/{reminderId}` | scheduled nudge (per-link or per-collection digest) |
+
+Relationships: User 1—N Collection · Collection 1—N Link (`collectionId`, null = Unsorted) · Collection 1—N Collection (`parentId`) · Link N—N Tag (via `tags: string[]` of slugs) · Link/Collection 1—N Reminder.
+
+### 7.2 Enums (`src/types/enums.ts`)
+
+```ts
+export type Priority = 'none' | 'low' | 'medium' | 'high';
+export type Cadence = 'off' | 'daily' | 'every3days' | 'weekly';
+export type SourceKey = 'instagram' | 'tiktok' | 'youtube' | 'x' | 'reddit' | 'pinterest' | 'web';
+export type MediaType = 'link' | 'image' | 'video';
+export type Intent = 'read' | 'watch' | 'buy' | 'try' | 'reference';
+export type ColorKey = 'orange'|'blue'|'mint'|'lime'|'sun'|'coral'|'violet'|'pink'|'brown'|'tan'|'slate'|'ink';
+export type IconKey = 'utensils'|'plane'|'zap'|'home'|'book-open'|'coffee'|'heart'|'dumbbell'|'tv'|'shopping-bag'|'briefcase'|'music'|'camera'|'gift'|'star'|'graduation-cap';
+export type ReminderKind = 'link' | 'collection-digest' | 'new-saves';
+export type ReminderStatus = 'scheduled' | 'fired' | 'snoozed' | 'done' | 'cancelled';
+export type Plan = 'free' | 'pro';
+
+export const DEFAULT_CADENCE: Record<Priority, Cadence> = {
+  high: 'daily', medium: 'every3days', low: 'weekly', none: 'off',
+};
+```
+
+### 7.3 User — `users/{uid}`
+
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| displayName | string \| null | | |
+| email | string \| null | | null while anonymous |
+| isAnonymous | boolean | ✓ | |
+| plan | Plan | ✓ | default `free` |
+| onboardingDone | boolean | ✓ | |
+| settings.hapticsEnabled | boolean | ✓ | default true |
+| settings.remindersEnabled | boolean | ✓ | master switch, default true |
+| settings.newSaveReminders | boolean | ✓ | default true |
+| settings.priorityNudges | boolean | ✓ | default true |
+| settings.digestTime | string `HH:mm` | ✓ | default `09:00` |
+| settings.quietHoursStart | string `HH:mm` \| null | | default `22:00` |
+| settings.quietHoursEnd | string `HH:mm` \| null | | default `08:00` |
+| settings.timezone | string (IANA) | ✓ | from device |
+| counters.collections / links / pinned / tags | number | ✓ | maintained with `increment()` in the same batch as the write |
+| lastBackupAt | Timestamp \| null | | shown in Settings |
+| createdAt / updatedAt | Timestamp | ✓ | |
+
+### 7.4 Collection — `users/{uid}/collections/{id}`
+
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| name | string (1–40) | ✓ | |
+| icon | IconKey | ✓ | |
+| color | ColorKey | ✓ | |
+| parentId | string \| null | ✓ | one level of nesting max for MVP |
+| **priority** | Priority | ✓ | default `none` |
+| **cadence** | Cadence | ✓ | default from `DEFAULT_CADENCE[priority]`, overridable |
+| **reminderTime** | string `HH:mm` \| null | | null → use `settings.digestTime` |
+| itemCount | number | ✓ | active (non-deleted) links |
+| newCount | number | ✓ | links with `reviewedAt == null` |
+| sortOrder | number | ✓ | manual ordering |
+| createdAt / updatedAt | Timestamp | ✓ | |
+| archivedAt | Timestamp \| null | | |
+
+"Unsorted" is **virtual** (`collectionId = null`), not a document.
+
+### 7.5 Link — `users/{uid}/links/{id}`
+
+| Field | Type | Req | Notes |
+|---|---|---|---|
+| url | string | ✓ | as shared |
+| normalizedUrl | string | ✓ | strip tracking params (`utm_*`, `igshid`, `si`, …), lowercase host; used for duplicate detection |
+| title | string | ✓ | auto-filled, user-editable |
+| description | string | | |
+| imageUrl | string \| null | | |
+| siteName | string | | |
+| source | SourceKey | ✓ | derived from host |
+| mediaType | MediaType | ✓ | |
+| collectionId | string \| null | ✓ | null = Unsorted |
+| collectionPriority | Priority | ✓ | **denormalized** from collection; update all links when collection priority changes (batched) |
+| tags | string[] | ✓ | tag slugs, lowercase |
+| note | string | | |
+| intent | Intent \| null | | "why I saved this" |
+| isPinned | boolean | ✓ | |
+| reviewedAt | Timestamp \| null | ✓ | null = "new" (shows NEW badge, counts in review inbox) |
+| doneAt | Timestamp \| null | | set by "Mark done" → stops reminders |
+| nextReminderAt | Timestamp \| null | | denormalized earliest pending per-link reminder |
+| lastOpenedAt | Timestamp \| null | | |
+| openCount | number | ✓ | default 0 |
+| metaStatus | 'pending' \| 'ok' \| 'failed' | ✓ | |
+| createdAt / updatedAt | Timestamp | ✓ | |
+| deletedAt | Timestamp \| null | | soft delete |
+
+### 7.6 Tag — `users/{uid}/tags/{slug}`
+
+| Field | Type | Notes |
+|---|---|---|
+| name | string | display, e.g. `recipes` |
+| color | ColorKey | assigned from palette by hash of slug |
+| count | number | usage count (increment/decrement) |
+| createdAt | Timestamp | |
+
+### 7.7 Reminder — `users/{uid}/reminders/{id}`
+
+| Field | Type | Notes |
+|---|---|---|
+| kind | ReminderKind | |
+| linkId | string \| null | for `link` |
+| collectionId | string \| null | for `collection-digest` |
+| fireAt | Timestamp | next fire time |
+| repeat | Cadence | `off` for one-shot |
+| status | ReminderStatus | |
+| snoozedUntil | Timestamp \| null | |
+| notificationId | string \| null | `expo-notifications` local identifier (device-specific; re-created on each reschedule) |
+| createdAt | Timestamp | |
+
+### 7.8 Composite indexes (`firestore.indexes.json`)
+
+- `links`: `collectionId ASC, deletedAt ASC, createdAt DESC`
+- `links`: `isPinned ASC, deletedAt ASC, createdAt DESC`
+- `links`: `reviewedAt ASC, deletedAt ASC, createdAt DESC` (review inbox)
+- `links`: `tags ARRAY_CONTAINS, deletedAt ASC, createdAt DESC`
+- `links`: `source ASC, deletedAt ASC, createdAt DESC`
+- `links`: `collectionPriority ASC, doneAt ASC, createdAt DESC` (priority backlog)
+- `links`: `nextReminderAt ASC, doneAt ASC` (due list)
+- `collections`: `parentId ASC, sortOrder ASC`
+
+### 7.9 Security rules (`firestore.rules`)
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{db}/documents {
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      match /{sub=**} {
+        allow read, write: if request.auth != null && request.auth.uid == uid;
+      }
+    }
+  }
 }
 ```
+Tighten later with field validation (string lengths, enum membership, `plan` not client-writable once billing exists).
 
-Acceptable exceptions (no token needed): layout props (`flex`, `flexDirection`, `alignItems`, `justifyContent`, positioning), relative sizing (`width: '100%'`), fixed dimensions for images, icons, and decorative elements (and small layout maxima like a button column's `maxWidth`), platform shadow values, and `opacity` for pressed/disabled states or subtle decorative accents.
+## 8. Reminder & notification engine (core differentiator)
 
-The theme mode (light/dark/system) lives in `src/stores/themeStore.ts`, persisted with AsyncStorage. The Settings screen changes it; `useColors()`/`useIsDark()` respect it everywhere automatically. In non-hook contexts (class components), resolve colors with `resolveIsDark` + `getColors` from `@/lib` — see `ErrorBoundary` for the pattern.
+Local notifications only (`expo-notifications`). Lives in `src/notifications/engine.ts`.
 
-## Component architecture
+### 8.1 Rules
 
-- **Screen scaffold** (`src/components/Screen.tsx`): every screen renders its content inside `Screen`. It provides the themed background, safe-area padding, clearance for the floating tab bars, and a centered max-width column on wide viewports. Props: `scroll` (wraps content in a ScrollView) and `centered` (vertically centers hero-style content). Don't hand-roll safe-area or tab-inset handling in screens.
-- **UI primitives** (`src/components/ui/`): `Button` (variants: primary, secondary, outline, ghost, danger; sizes sm/md/lg; `loading`, `fullWidth`, `leftIcon`), `Card` (surface container: padded, bordered panel with a `gap` between children), `Input` (label, error, hint, icons, password toggle), `Text` (variants: h1, h2, h3, body, bodySmall, caption, label, code; `color` and `weight` props — each `color` value maps to the theme token of the same name). Import from the barrel: `import { Button, Text } from '@/components/ui'`.
-- **Error boundaries** (`src/components/error/`): the root layout is wrapped in `ErrorBoundary`. Always wrap screen components with `ScreenErrorBoundary`:
+1. **iOS allows max 64 pending local notifications.** Budget **≤ 60**. Priority of slots: per-link one-shots > High digests > Medium > Low > new-saves nudge.
+2. Use **digest notifications per priority collection**, not one per link. Count is computed at schedule time (body text can go slightly stale; refreshed on every app foreground).
+3. Cadence → trigger:
+   - `daily` → `DAILY` calendar trigger at `reminderTime ?? digestTime`
+   - `weekly` → `WEEKLY` calendar trigger (weekday = day created, hour/min from time)
+   - `every3days` → schedule the **next 8 one-shot date triggers** spaced 3 days apart; refill on each app open
+   - `off` → nothing
+4. **Quiet hours:** if a fire time falls inside quiet hours, shift to `quietHoursEnd`.
+5. **Skip empty digests:** if a collection has 0 non-done, non-deleted links, don't schedule.
+6. **New-saves nudge:** if any link has `reviewedAt == null` and `newSaveReminders` on → one date trigger ~3 h after the latest unreviewed save (respect quiet hours). Body: "5 new saves waiting".
+7. **Per-link reminder** (RemindPicker): one-shot date trigger; writes a `Reminder` doc and sets `link.nextReminderAt`.
+8. `rescheduleAll()` runs: on app launch, on foreground, and after any mutation affecting priority, cadence, links done/deleted, or settings. Implementation: cancel all app-scheduled notifications → recompute → schedule.
+9. Master switch `remindersEnabled = false` → cancel everything.
 
-```tsx
-export default function MyScreen() {
-  return (
-    <ScreenErrorBoundary screenName="My Screen">
-      <MyScreenContent />
-    </ScreenErrorBoundary>
-  )
-}
+### 8.2 Categories & actions
 
-function MyScreenContent() {
-  return <Screen scroll>…</Screen>
-}
-```
+Register category `THANNU_REMINDER` with actions: **Open**, **Snooze 1h**, **Tomorrow**, **Done**. (Verify action behavior in Expo Go on a real iPhone; fall back to tap-to-open only if unsupported.)
 
-- **Screen-specific components** stay in the screen file. Only extract to `src/components/` when reused across screens.
+Notification `data` payload: `{ type: 'link'|'collection'|'new', linkId?, collectionId? }`. Handler routes: link → `/link/[id]`, collection → `/collection/[id]`, new → `/review`, due → `/today`.
 
-## State & persistence
+### 8.3 Permission flow
 
-- **Client state**: Zustand stores in `src/stores/`. For state that should survive restarts, use the `persist` middleware with AsyncStorage — see `themeStore.ts` for the pattern. The root layout holds the splash screen until the theme store has rehydrated (`useThemeHydration`), so the first frame renders in the correct theme.
-- **One-off persistence**: the typed `storage` helper in `src/lib/storage.ts` (JSON over AsyncStorage).
-- There is no backend in this app. Data lives on-device.
+Ask only after the user sees value: onboarding slide 3 ("Turn on reminders") or first time they set a priority/remind. If denied: show inline "Reminders are off — enable in Settings" with `Linking.openSettings()`.
 
-## Installed libraries
+### 8.4 Foreground behavior
 
-Use these for their respective purposes. Do not introduce alternatives without explicit user approval.
+`Notifications.setNotificationHandler` → show banner + sound while app is open only for per-link reminders; suppress digests in foreground (show in-app Due banner instead).
 
-| Purpose | Library |
-|---------|---------|
-| Navigation | `expo-router` (file-based; native tabs in `AppTabs.tsx`, web tabs in `AppTabs.web.tsx`) |
-| Development builds | `expo-dev-client` |
-| Images | `expo-image` — always use instead of React Native's `Image` |
-| Animations | `react-native-reanimated` |
-| Gestures | `react-native-gesture-handler` |
-| Storage | `@react-native-async-storage/async-storage` |
-| State management | `zustand` (stores in `src/stores/`) |
-| Icons | `@expo/vector-icons` (Ionicons); native tab icons use `sf`/`md` props on `NativeTabs.Trigger.Icon` |
-| Camera | `expo-camera` (permissions configured in `app.json`) |
-| Photo picking | `expo-image-picker` |
-| Photo library | `expo-media-library` |
-| Location | `expo-location` |
-| Local notifications | `expo-notifications` — for on-device scheduled/local notifications only; push (remote) notifications are not set up |
-| Haptics | `expo-haptics` |
-| Video playback | `expo-video` |
-| SVG | `react-native-svg` |
-| Gradients / blur | `expo-linear-gradient`, `expo-blur` |
-| Web content | `react-native-webview` |
-| Utilities | `expo-clipboard`, `expo-sharing`, `expo-file-system` |
+## 9. Metadata fetching ("It fills itself in")
 
-The device-capability modules (camera, location, media, etc.) are pre-installed even though the app code doesn't use them yet — this is deliberate, so their native code is already included in every development and EAS build and adding a feature never requires a rebuild. Use these instead of introducing alternatives. Pure-JS libraries can be added freely at any time.
+`src/services/metadata.ts` → `fetchMetadata(url): Promise<Meta>` — client-side, with timeout 6 s:
 
-## Conventions
+1. Normalize URL; derive `source` from host.
+2. Source-specific oEmbed (no API key): **TikTok** `https://www.tiktok.com/oembed?url=…`, **YouTube** `https://www.youtube.com/oembed?url=…&format=json`.
+3. Otherwise fetch HTML with a browser-like `User-Agent` and parse `og:title`, `og:description`, `og:image`, `og:site_name` (+ `twitter:*`, `<title>` fallback).
+4. **Instagram / X / Reddit often block or return login walls** → on failure save with `metaStatus='failed'`, title = `"<Source> post"`, image null → render source-colored placeholder; user can edit title (pencil) and tap **Refresh** to retry.
+5. Never block saving on metadata: write the link immediately with `metaStatus='pending'`, then update when the fetch resolves.
+6. Optional later: Cloud Function proxy (needs Firebase Blaze plan) for reliability.
 
-- **React Compiler is enabled** (`experiments.reactCompiler` in `app.json`) — it handles memoization automatically. The explicit `useMemo` in the `createStyles` pattern is part of the shared convention; don't add further manual memoization.
-- **Typed routes are enabled** (`experiments.typedRoutes`). Route strings passed to `Link` / `router` are type-checked; run the dev server once to regenerate types after adding routes.
-- **React 19**: `ref` is a regular prop on function components — don't use `forwardRef` (see `Input` for the pattern).
-- File naming: PascalCase for components (`Button.tsx`, `AppTabs.tsx`), camelCase for hooks/stores/lib (`useColors.ts`, `themeStore.ts`).
-- **No test framework is set up.** If the user asks for tests, propose a setup (e.g. Jest + React Native Testing Library) and agree on it before adding dependencies.
-- App config lives in `app.json` (name, slug, scheme, icons, splash screen) and `eas.json` (build profiles). `app.json` changes require restarting the dev server; changes that add native configuration require a new development build.
+Duplicate detection: if `normalizedUrl` already exists → show "Already saved in <Collection>" with **Open** / **Save anyway**.
+
+## 10. Import / export
+
+- **Export:** JSON `{ version, exportedAt, collections[], links[], tags[] }` → `expo-file-system` write → `expo-sharing`. Update `lastBackupAt`.
+- **Restore:** pick JSON → zod-validate → confirm (merge vs replace) → batched writes.
+- **Import bookmarks:** CSV (`url,title,tags,collection`), Netscape **HTML** bookmarks (`<DT><A HREF ADD_DATE TAGS>` with `<H3>` folders), **JSON** (array of `{url,title,tags,collection}`). Imported links get `reviewedAt = now` (don't flood the review inbox). Show progress; batch ≤ 400.
+
+## 11. Business rules (assumptions — validate)
+
+- **Free:** unlimited saves & collections, up to **3 priority folders**, daily digest + one-shot reminders (max 20 active), export.
+- **Pro (stub for now):** unlimited priority folders & reminders, custom cadence/time per folder, cross-device sync after account creation, backup restore, tags unlimited.
+- Anonymous users can use everything in Free; "Create account" links the anonymous user via `linkWithCredential` so data isn't lost.
+
+## 12. Known limitations & upgrade path
+
+1. **Share sheet:** Expo Go can't register an iOS Share Extension. MVP uses **paste-to-save + clipboard detection**. To get "Share → Thannu", move to a **development build** (EAS) and add `expo-share-intent` (config plugin). Plan this right after MVP — it's the core capture UX.
+2. **Remote push** (server-triggered nudges) needs a dev build + APNs credentials. Not needed while all reminders are local.
+3. **Apple/Google sign-in & in-app purchase** → dev build.
+4. **Firestore offline** is memory-only in RN JS SDK → cache snapshot locally.
+5. Instagram metadata is unreliable (see §9).
+
+## 13. Milestones (build in this order; each ends runnable in Expo Go)
+
+| # | Milestone | Done when |
+|---|---|---|
+| M0 | Scaffold: Expo Router, TS strict, alias, fonts, tokens, Pressable w/ press-in + haptics | Dev screen shows all components in all variants |
+| M1 | Firebase config + anonymous auth + user doc bootstrap + rules/indexes deployed | App launches, creates `users/{uid}` once |
+| M2 | Collections CRUD (grid, editor sheet, icon/color picker, nesting) | Create/edit/delete collections; counts correct |
+| M3 | Save flow: paste → Save sheet → metadata → write link; duplicate check | Paste a TikTok/YouTube/web URL → card appears with title+image |
+| M4 | Collection detail + LinkCard grid + filters + Link detail (pin, move, refresh, delete, tags, notes) | Matches screenshot-2 layout |
+| M5 | Search + Library stats + tag cloud + tag filtering | Live search across titles/tags/notes |
+| M6 | Review inbox (Keep/Pin/Remind later/Delete) + `NEW` badges + mint banner | Inbox zero state works |
+| M7 | **Priority folders** (selector, flag badge, cadence defaults, denormalized `collectionPriority`) | Changing priority updates all links in batch |
+| M8 | **Reminder engine** (permissions, digests, one-shots, snooze, quiet hours, routing, Today screen, violet banner) | Set High on a folder → daily notification fires at chosen time; tap routes correctly |
+| M9 | Settings (prefs, export/restore, import, account upgrade) | Round-trip backup works |
+| M10 | Onboarding, empty states, paywall stub, polish, accessibility pass | Checklist in `design.md` §12 all ticked |
+
+## 14. Definition of done (every task)
+
+- Runs in Expo Go on a physical iPhone, no red/yellow screens.
+- No TypeScript errors (`npx tsc --noEmit`) and lint passes.
+- Uses design tokens; matches `design.md` for the screen.
+- Firestore reads/writes go through services; indexes added if a new query needs one.
+- Reminder-affecting changes call `rescheduleAll()`.
+- Loading, empty, and error states handled.
+
+## 15. Things Claude must NOT do
+
+- Don't introduce native modules, `react-native-firebase`, or anything requiring a dev build without asking.
+- Don't store secrets in code; use `EXPO_PUBLIC_*` env only for non-secret Firebase web config.
+- Don't copy Tuckii's mascot, logo, copy or illustrations.
+- Don't schedule one notification per link at scale (64-notification cap).
+- Don't block the UI on metadata fetch.
+- Don't write directly to Firestore from components.
+- Don't use `localStorage`; use AsyncStorage.

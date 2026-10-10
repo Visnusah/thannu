@@ -2,12 +2,13 @@ import { useMemo, type PropsWithChildren } from 'react'
 import { ScrollView, StyleSheet, View } from 'react-native'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
-import { useColors } from '@/hooks'
+import { useColors, useResponsive } from '@/hooks'
 import {
   spacing,
   BottomTabInset,
   TopTabInset,
   MaxContentWidth,
+  screenPaddingH,
   type Colors,
 } from '@/lib'
 
@@ -16,6 +17,8 @@ type ScreenProps = PropsWithChildren<{
   scroll?: boolean
   /** Center content vertically — for hero-style screens */
   centered?: boolean
+  /** Override horizontal padding (defaults to responsive screenPaddingH) */
+  horizontalPadding?: number
 }>
 
 const createStyles = (colors: Colors) =>
@@ -43,18 +46,28 @@ const createStyles = (colors: Colors) =>
 /**
  * Shared screen scaffold: themed background, safe-area padding, clearance for
  * the floating tab bars, and a centered max-width column on wide viewports.
+ * Padding automatically adapts to the device's screen width breakpoint.
  * Every screen should render its content inside a Screen.
  */
-export function Screen({ children, scroll = false, centered = false }: ScreenProps) {
+export function Screen({
+  children,
+  scroll = false,
+  centered = false,
+  horizontalPadding,
+}: ScreenProps) {
   const colors = useColors()
   const styles = useMemo(() => createStyles(colors), [colors])
   const insets = useSafeAreaInsets()
+  const { size } = useResponsive()
+
+  // Pick responsive horizontal padding or fall back to caller override
+  const hPad = horizontalPadding ?? screenPaddingH[size]
 
   const insetStyle = {
     paddingTop: insets.top + TopTabInset,
     paddingBottom: insets.bottom + BottomTabInset + spacing.md,
-    paddingLeft: insets.left + spacing.lg,
-    paddingRight: insets.right + spacing.lg,
+    paddingLeft: insets.left + hPad,
+    paddingRight: insets.right + hPad,
   }
 
   const content = (
@@ -65,7 +78,12 @@ export function Screen({ children, scroll = false, centered = false }: ScreenPro
 
   if (scroll) {
     return (
-      <ScrollView style={styles.root} contentContainerStyle={styles.row}>
+      <ScrollView
+        style={styles.root}
+        contentContainerStyle={styles.row}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
         {content}
       </ScrollView>
     )

@@ -1,182 +1,774 @@
-import { Image } from 'expo-image'
-import { useEffect, useMemo } from 'react'
-import { StyleSheet, View } from 'react-native'
+import * as Clipboard from 'expo-clipboard'
+import * as Haptics from 'expo-haptics'
+import { Ionicons } from '@expo/vector-icons'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter, Link } from 'expo-router'
+import {
+  Pressable,
+  StyleSheet,
+  TextInput,
+  View,
+} from 'react-native'
 import Animated, {
   Easing,
+  FadeIn,
   FadeInDown,
+  FadeOut,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSpring,
   withTiming,
-  ZoomIn,
 } from 'react-native-reanimated'
 
-import { Screen } from '@/components'
+import { Screen, CreateCollectionModal } from '@/components'
 import { ScreenErrorBoundary } from '@/components/error'
-import { Button, Card, Input, Text } from '@/components/ui'
-import { useColors } from '@/hooks'
-import { borderRadius, spacing, type Colors } from '@/lib'
+import { Text } from '@/components/ui'
+import { useColors, useResponsive, type ScreenSize, useIsDark } from '@/hooks'
+import { useCollectionsStore, type Collection, type CollectionPriority } from '@/stores'
+import {
+  gridGap,
+  hardShadow,
+  minTouchTarget,
+  screenPaddingH,
+  spacing,
+  strokeWidth,
+  thannuColors,
+  thannuRadius,
+  type Colors,
+} from '@/lib'
 
-const features = ['Light & dark theme', 'Local storage', 'File-based routing']
+const priorityColor: Record<CollectionPriority, string> = {
+  high: thannuColors.coral,
+  medium: thannuColors.sun,
+  low: thannuColors.blue,
+  none: 'transparent',
+}
 
-const createStyles = (colors: Colors) =>
-  StyleSheet.create({
-    logoContainer: {
+// ─── Styles ───────────────────────────────────────────────────────────────────
+
+const createStyles = (colors: Colors, isSmall: boolean, width: number, size: ScreenSize, isDark: boolean) => {
+  const colWidth = (width - screenPaddingH[size] * 2 - gridGap) / 2
+
+  return StyleSheet.create({
+    // Header row
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: isSmall ? spacing.md : spacing.lg,
+    },
+    headerIcons: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+    },
+    iconBtn: {
+      width: minTouchTarget,
+      height: minTouchTarget,
+      borderRadius: thannuRadius.sm,
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
+      backgroundColor: colors.surface,
       alignItems: 'center',
       justifyContent: 'center',
+      shadowColor: colors.text,
+      shadowOffset: { width: 2, height: 2 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 3,
+    },
+
+    // Hero title
+    heroBlock: {
+      marginBottom: isSmall ? spacing.md : spacing.lg,
+      gap: 2,
+    },
+    heroTitle: {
+      fontSize: isSmall ? 34 : 40,
+      fontWeight: '800',
+      color: colors.text,
+      letterSpacing: -1.2,
+      lineHeight: isSmall ? 38 : 44,
+    },
+
+    // Quick-save field
+    quickSaveRow: {
+      flexDirection: 'row',
+      gap: spacing.sm,
+      marginBottom: isSmall ? spacing.md : spacing.lg,
+    },
+    quickSaveField: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
+      borderRadius: thannuRadius.md,
+      backgroundColor: colors.surface,
+      paddingHorizontal: spacing.md,
+      height: 52,
+      gap: spacing.sm,
+      shadowColor: colors.text,
+      shadowOffset: { width: 2, height: 2 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 3,
+    },
+    quickSaveInput: {
+      flex: 1,
+      fontSize: isSmall ? 14 : 15,
+      color: colors.text,
+    },
+    addBtn: {
+      width: 52,
+      height: 52,
+      borderRadius: thannuRadius.md,
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
+      backgroundColor: thannuColors.sun,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: colors.text,
+      shadowOffset: { width: 4, height: 4 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 5,
+    },
+
+    // Banners
+    banner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
+      borderRadius: thannuRadius.md,
+      padding: isSmall ? spacing.sm : spacing.md,
       marginBottom: spacing.sm,
+      gap: spacing.sm,
+      shadowColor: colors.text,
+      shadowOffset: { width: 2, height: 2 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 3,
     },
-    glow: {
-      position: 'absolute',
-      width: 220,
-      height: 220,
-      borderRadius: borderRadius.full,
-      backgroundColor: colors.accent,
-      opacity: 0.12,
+    bannerMint: { backgroundColor: isDark ? '#0D3325' : thannuColors.mintSoft },
+    bannerIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: thannuRadius.sm,
+      borderWidth: strokeWidth.chip,
+      borderColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    logo: {
-      width: 96,
-      height: 96,
+    bannerMintIcon: { backgroundColor: isDark ? colors.surface : thannuColors.mint },
+    bannerText: { flex: 1 },
+    bannerChevron: {
+      opacity: 0.5,
     },
-    title: {
-      textAlign: 'center',
+
+    // Collections section
+    sectionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: spacing.md,
+      marginTop: isSmall ? spacing.md : spacing.lg,
     },
-    subtitle: {
-      textAlign: 'center',
-      paddingHorizontal: spacing.lg,
+    sectionLabel: {
+      fontSize: 11,
+      fontWeight: '800',
+      letterSpacing: 1.2,
+      color: colors.secondary,
+      textTransform: 'uppercase',
     },
-    chipRow: {
+    sortBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      paddingVertical: 4,
+      paddingHorizontal: spacing.sm,
+      borderRadius: thannuRadius.pill,
+      borderWidth: strokeWidth.chip,
+      borderColor: colors.border,
+    },
+
+    // Collection grid
+    gridWrapper: {
+      zIndex: 51,
+    },
+    grid: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      justifyContent: 'center',
-      gap: spacing.sm,
-      marginTop: spacing.md,
+      gap: gridGap,
     },
-    chip: {
-      paddingVertical: spacing.xs,
-      paddingHorizontal: spacing.md,
-      borderRadius: borderRadius.full,
-      borderWidth: 1,
-      borderColor: colors.border,
+
+    // Collection card
+    collectionCard: {
+      width: colWidth,
+      borderRadius: thannuRadius.lg,
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
       backgroundColor: colors.surface,
+      overflow: 'visible',
+      shadowColor: colors.text,
+      shadowOffset: { width: 4, height: 4 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 5,
     },
-    previewWrap: {
-      width: '100%',
-      maxWidth: 420,
-      marginTop: spacing.lg,
+    collectionTab: {
+      height: 6,
+      borderTopLeftRadius: thannuRadius.lg - 2,
+      borderTopRightRadius: thannuRadius.lg - 2,
     },
-    previewHeader: {
-      gap: spacing.xs,
-    },
-    previewButtons: {
-      flexDirection: 'row',
+    collectionBody: {
+      padding: isSmall ? spacing.sm : spacing.md,
       gap: spacing.sm,
     },
-    statusRow: {
+    collectionIconTile: {
+      width: 44,
+      height: 44,
+      borderRadius: thannuRadius.sm,
+      borderWidth: strokeWidth.chip,
+      borderColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    collectionFooter: {
       flexDirection: 'row',
-      gap: spacing.md,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginTop: 2,
+    },
+    newBadge: {
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+      borderRadius: thannuRadius.pill,
+      borderWidth: strokeWidth.chip,
+      borderColor: colors.text,
+      backgroundColor: thannuColors.sun,
+    },
+    priorityFlag: {
+      width: 20,
+      height: 20,
+      borderRadius: 4,
+      borderWidth: 1,
+      borderColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+
+    // Floating action buttons (Edit, Share, Delete)
+    floatingActionBtn: {
+      position: 'absolute',
+      width: 48,
+      height: 48,
+      borderRadius: 24,
+      backgroundColor: colors.surface,
+      borderWidth: strokeWidth.card,
+      borderColor: colors.text,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: colors.text,
+      shadowOffset: { width: 3, height: 3 },
+      shadowOpacity: 1,
+      shadowRadius: 0,
+      elevation: 6,
+      zIndex: 200,
     },
   })
+}
 
-function HomeScreenContent() {
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function IconButton({
+  icon,
+  onPress,
+  accessibilityLabel,
+}: {
+  icon: keyof typeof Ionicons.glyphMap
+  onPress?: () => void
+  accessibilityLabel: string
+}) {
   const colors = useColors()
-  const styles = useMemo(() => createStyles(colors), [colors])
+  const styles = useMemo(
+    () =>
+      StyleSheet.create({
+        btn: {
+          width: minTouchTarget,
+          height: minTouchTarget,
+          borderRadius: thannuRadius.sm,
+          borderWidth: strokeWidth.card,
+          borderColor: colors.text,
+          backgroundColor: colors.surface,
+          alignItems: 'center',
+          justifyContent: 'center',
+          shadowColor: colors.text,
+          shadowOffset: { width: 2, height: 2 },
+          shadowOpacity: 1,
+          shadowRadius: 0,
+          elevation: 3,
+        },
+      }),
+    [colors]
+  )
 
-  const float = useSharedValue(0)
-  const pulse = useSharedValue(1)
+  const scale = useSharedValue(1)
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
 
+  return (
+    <Animated.View style={anim}>
+      <Pressable
+        style={styles.btn}
+        onPressIn={() => {
+          scale.value = withTiming(0.93, { duration: 90 })
+        }}
+        onPressOut={() => {
+          scale.value = withTiming(1, { duration: 130 })
+        }}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={accessibilityLabel}
+      >
+        <Ionicons name={icon} size={20} color={colors.text} />
+      </Pressable>
+    </Animated.View>
+  )
+}
+
+function Banner({
+  title,
+  subtitle,
+  styles,
+  onPress,
+}: {
+  title: string
+  subtitle: string
+  styles: ReturnType<typeof createStyles>
+  onPress?: () => void
+}) {
+  const colors = useColors()
+  const scale = useSharedValue(1)
+  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(500).duration(500)}
+      style={anim}
+    >
+      <Pressable
+        style={[styles.banner, styles.bannerMint]}
+        onPressIn={() => {
+          scale.value = withTiming(0.98, { duration: 90 })
+        }}
+        onPressOut={() => {
+          scale.value = withTiming(1, { duration: 130 })
+        }}
+        onPress={onPress}
+        accessibilityRole="button"
+        accessibilityLabel={title}
+      >
+        <View style={[styles.bannerIcon, styles.bannerMintIcon]}>
+          <Ionicons name="time-outline" size={20} color={colors.text} />
+        </View>
+        <View style={styles.bannerText}>
+          <Text variant="label" style={{ color: colors.text, fontWeight: '700' }}>
+            {title}
+          </Text>
+          <Text variant="caption" style={{ color: colors.secondary }}>
+            {subtitle}
+          </Text>
+        </View>
+        <Ionicons
+          name="chevron-forward"
+          size={16}
+          color={colors.text}
+          style={styles.bannerChevron}
+        />
+      </Pressable>
+    </Animated.View>
+  )
+}
+
+// Helper for floating action buttons
+function FloatingActionButton({
+  icon,
+  style,
+  delay,
+  isActive,
+  onPress,
+  styles,
+}: {
+  icon: keyof typeof Ionicons.glyphMap
+  style: any
+  delay: number
+  isActive: boolean
+  onPress: () => void
+  styles: ReturnType<typeof createStyles>
+}) {
+  const colors = useColors()
+  const scale = useSharedValue(0)
+  
   useEffect(() => {
-    float.set(
-      withRepeat(
-        withTiming(-8, { duration: 2200, easing: Easing.inOut(Easing.quad) }),
-        -1,
-        true
-      )
-    )
-    pulse.set(
-      withRepeat(
-        withTiming(1.15, { duration: 2200, easing: Easing.inOut(Easing.quad) }),
-        -1,
-        true
-      )
-    )
-  }, [float, pulse])
+    if (isActive) {
+      setTimeout(() => {
+        scale.value = withSpring(1, { damping: 22, stiffness: 350 })
+      }, delay)
+    } else {
+      scale.value = withTiming(0, { duration: 120 })
+    }
+  }, [isActive, scale, delay])
 
-  const floatStyle = useAnimatedStyle(() => ({
-    transform: [{ translateY: float.get() }],
-  }))
-  const pulseStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: pulse.get() }],
+  const anim = useAnimatedStyle(() => ({
+    transform: [{ scale: scale.value }],
+    opacity: scale.value > 0 ? 1 : 0,
   }))
 
   return (
-    <Screen scroll centered>
-      <View style={styles.logoContainer}>
-        <Animated.View style={[styles.glow, pulseStyle]} />
-        <Animated.View entering={ZoomIn.springify().damping(12)}>
-          <Animated.View style={floatStyle}>
-            <Image source={require('@/assets/images/logo.png')} style={styles.logo} />
+    <Animated.View style={[styles.floatingActionBtn, style, anim]} pointerEvents={isActive ? 'auto' : 'none'}>
+      <Pressable onPress={onPress} hitSlop={8} style={{ padding: 8 }}>
+        <Ionicons name={icon} size={22} color={colors.text} />
+      </Pressable>
+    </Animated.View>
+  )
+}
+
+function CollectionCard({
+  item,
+  styles,
+  index,
+  isActive,
+  onActivate,
+}: {
+  item: Collection
+  styles: ReturnType<typeof createStyles>
+  index: number
+  isActive: boolean
+  onActivate: () => void
+}) {
+  const router = useRouter()
+  const colors = useColors()
+  const scale = useSharedValue(1)
+  const rotation = useSharedValue(0)
+
+  const isLeftColumn = index % 2 === 0
+
+  // Floating card animation when active
+  useEffect(() => {
+    if (isActive) {
+      scale.value = withSpring(1.05, { damping: 22, stiffness: 350 })
+      rotation.value = withSpring(isLeftColumn ? 3 : -3, { damping: 22, stiffness: 350 })
+    } else {
+      scale.value = withTiming(1, { duration: 150 })
+      rotation.value = withTiming(0, { duration: 150 })
+    }
+  }, [isActive, scale, rotation, isLeftColumn])
+
+  const anim = useAnimatedStyle(() => ({ 
+    transform: [
+      { scale: scale.value },
+      { rotateZ: `${rotation.value}deg` }
+    ],
+    zIndex: isActive ? 100 : 1,
+  }))
+
+  const hasPriority = item.priority !== 'none'
+  const flagColor = priorityColor[item.priority]
+
+  return (
+    <Animated.View
+      entering={FadeInDown.delay(700 + index * 80).duration(500)}
+      style={{ zIndex: isActive ? 100 : 1 }}
+    >
+      <Animated.View style={anim}>
+        <Pressable
+          style={styles.collectionCard}
+          onPressIn={() => {
+            if (!isActive) scale.value = withTiming(0.97, { duration: 90 })
+          }}
+          onPressOut={() => {
+            if (!isActive) scale.value = withTiming(1, { duration: 130 })
+          }}
+          onPress={() => {
+            if (!isActive) {
+              router.push(`/collection/${item.id}`)
+            }
+          }}
+          onLongPress={onActivate}
+          delayLongPress={300}
+          accessibilityRole="button"
+          accessibilityLabel={`${item.name}, ${item.itemCount} items`}
+        >
+        {/* Colored folder tab */}
+        <View
+          style={[
+            styles.collectionTab,
+            {
+              backgroundColor: item.color,
+              borderBottomWidth: hasPriority ? 2 : 0,
+              borderBottomColor: colors.text,
+              borderStyle: hasPriority ? 'dashed' : 'solid',
+            },
+          ]}
+        />
+        <View style={styles.collectionBody}>
+          {/* Icon tile */}
+          <View style={[styles.collectionIconTile, { backgroundColor: item.color + '33' }]}>
+            <Ionicons name={item.icon as any} size={22} color={item.color === thannuColors.ink ? colors.text : item.color} />
+          </View>
+
+          {/* Count */}
+          <Text
+            variant="caption"
+            style={{ color: colors.secondary, fontWeight: '600' }}
+            allowFontScaling
+            maxFontSizeMultiplier={1.2}
+          >
+            {item.itemCount} items
+          </Text>
+
+          {/* Footer: title + badges */}
+          <View style={styles.collectionFooter}>
+            <Text
+              variant="h3"
+              style={{
+                color: colors.text,
+                fontWeight: '800',
+                fontSize: 14,
+                flexShrink: 1,
+                flexWrap: 'wrap',
+              }}
+              numberOfLines={2}
+              allowFontScaling
+              maxFontSizeMultiplier={1.2}
+            >
+              {item.name}
+            </Text>
+
+            {/* NEW badge */}
+            {item.newCount > 0 && (
+              <View style={styles.newBadge}>
+                <Text
+                  style={{ fontSize: 10, fontWeight: '800', color: colors.text }}
+                  allowFontScaling={false}
+                >
+                  {item.newCount} NEW
+                </Text>
+              </View>
+            )}
+
+            {/* Priority flag */}
+            {hasPriority && (
+              <View style={[styles.priorityFlag, { backgroundColor: flagColor }]}>
+                <Ionicons name="flag" size={10} color={thannuColors.white} />
+              </View>
+            )}
+          </View>
+        </View>
+
+        {/* Action Buttons (Rendered inside the card but positioned absolute outside) */}
+        <FloatingActionButton
+          icon="trash-outline"
+          style={isLeftColumn ? { top: -25, right: -25 } : { top: -25, left: -25 }}
+          delay={50}
+          isActive={isActive}
+          onPress={() => {}}
+          styles={styles}
+        />
+        <FloatingActionButton
+          icon="share-outline"
+          style={isLeftColumn ? { top: 15, right: -35 } : { top: 15, left: -35 }}
+          delay={100}
+          isActive={isActive}
+          onPress={() => {}}
+          styles={styles}
+        />
+        <FloatingActionButton
+          icon="pencil"
+          style={isLeftColumn ? { top: 55, right: -20 } : { top: 55, left: -20 }}
+          delay={150}
+          isActive={isActive}
+          onPress={() => {}}
+          styles={styles}
+        />
+      </Pressable>
+      </Animated.View>
+    </Animated.View>
+  )
+}
+
+// ─── Main Screen ──────────────────────────────────────────────────────────────
+
+function HomeScreenContent() {
+  const router = useRouter()
+  const { isSmall, width, size } = useResponsive()
+  const colors = useColors()
+  const isDark = useIsDark()
+  const styles = useMemo(() => createStyles(colors, isSmall, width, size, isDark), [colors, isSmall, width, size, isDark])
+
+  const { collections, addCollection } = useCollectionsStore()
+
+  const [activeCardId, setActiveCardId] = useState<string | null>(null)
+  const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
+  
+  // Interactive testing state
+  const [linkInput, setLinkInput] = useState('')
+  const [newSavesCount, setNewSavesCount] = useState(1)
+
+  const handlePaste = async () => {
+    const text = await Clipboard.getStringAsync()
+    if (text) {
+      setLinkInput(text)
+      Haptics.selectionAsync()
+    }
+  }
+
+  const handleSave = () => {
+    if (!linkInput.trim()) return
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+    setNewSavesCount((prev) => prev + 1)
+    setLinkInput('')
+  }
+
+  // Floating "+" add button pulse
+  const addPulse = useSharedValue(1)
+
+  useEffect(() => {
+    addPulse.set(
+      withRepeat(
+        withTiming(1.06, { duration: 1800, easing: Easing.inOut(Easing.quad) }),
+        -1,
+        true
+      )
+    )
+  }, [addPulse])
+  const addPulseStyle = useAnimatedStyle(() => ({ transform: [{ scale: addPulse.get() }] }))
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Screen scroll>
+        {/* ── Header ── */}
+        <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
+          <View />
+          <View style={styles.headerIcons}>
+            <IconButton icon="settings-outline" accessibilityLabel="Settings" />
+            <IconButton icon="folder-open-outline" accessibilityLabel="Add folder" onPress={() => setIsCreateModalVisible(true)} />
+            <IconButton icon="search-outline" accessibilityLabel="Search" />
+          </View>
+        </Animated.View>
+
+        {/* ── Hero Title ── */}
+        <Animated.View entering={FadeInDown.delay(100).duration(500)} style={styles.heroBlock}>
+          <Text style={styles.heroTitle} allowFontScaling maxFontSizeMultiplier={1.1}>
+            Save now.{'\n'}Find anytime.
+          </Text>
+        </Animated.View>
+
+        {/* ── Quick-save field ── */}
+        <Animated.View entering={FadeInDown.delay(250).duration(500)} style={styles.quickSaveRow}>
+          <View style={styles.quickSaveField}>
+            <Ionicons name="pricetag-outline" size={18} color={colors.secondary} />
+            <TextInput
+              style={styles.quickSaveInput}
+              placeholder="Paste link to quick save"
+              placeholderTextColor={colors.secondary}
+              accessibilityLabel="Paste link to quick save"
+              returnKeyType="go"
+              autoCapitalize="none"
+              autoCorrect={false}
+              allowFontScaling
+              maxFontSizeMultiplier={1.2}
+              value={linkInput}
+              onChangeText={setLinkInput}
+              onSubmitEditing={handleSave}
+            />
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Paste from clipboard"
+              hitSlop={8}
+              onPress={handlePaste}
+            >
+              <Ionicons name="clipboard-outline" size={18} color={colors.secondary} />
+            </Pressable>
+          </View>
+
+          {/* Sun "+" add button */}
+          <Animated.View style={addPulseStyle}>
+            <Pressable
+              style={styles.addBtn}
+              accessibilityRole="button"
+              accessibilityLabel="Add link"
+              onPress={handleSave}
+            >
+              <Ionicons name="add" size={28} color={colors.text} />
+            </Pressable>
           </Animated.View>
         </Animated.View>
-      </View>
 
-      <Animated.View entering={FadeInDown.delay(150).duration(600)}>
-        <Text variant="h1" style={styles.title}>
-          Your app starts here
-        </Text>
-      </Animated.View>
+        {/* ── Mint banner (unreviewed saves) ── */}
+        {newSavesCount > 0 && (
+          <Banner
+            title={`${newSavesCount} new save${newSavesCount === 1 ? '' : 's'} waiting`}
+            subtitle="Review now"
+            styles={styles}
+            onPress={() => router.push('/review')}
+          />
+        )}
 
-      <Animated.View entering={FadeInDown.delay(300).duration(600)}>
-        <Text color="secondary" style={styles.subtitle}>
-          Open your AI assistant and describe what you want to build.
-        </Text>
-      </Animated.View>
+        {/* ── My Collections ── */}
+        <Animated.View entering={FadeInDown.delay(600).duration(500)} style={styles.sectionRow}>
+          <Text style={styles.sectionLabel} allowFontScaling={false}>
+            My Collections
+          </Text>
+        </Animated.View>
 
-      <View style={styles.chipRow}>
-        {features.map((feature, index) => (
+        {/* Full-screen Dark Overlay inside ScrollView so zIndex works */}
+        {activeCardId !== null && (
           <Animated.View
-            key={feature}
-            entering={FadeInDown.delay(450 + index * 100).duration(600)}
-            style={styles.chip}
+            entering={FadeIn.duration(200)}
+            exiting={FadeOut.duration(200)}
+            style={{
+              position: 'absolute',
+              top: -3000,
+              left: -3000,
+              right: -3000,
+              bottom: -3000,
+              backgroundColor: 'rgba(0,0,0,0.6)',
+              zIndex: 50,
+            }}
           >
-            <Text variant="caption">{feature}</Text>
+            <Pressable style={{ flex: 1 }} onPress={() => setActiveCardId(null)} />
           </Animated.View>
-        ))}
-      </View>
+        )}
 
-      {/* Sample elements so an incoming design system has something to land
-          on — one of each primitive. Restyle these (or delete the section)
-          once the app has real screens. */}
-      <Animated.View entering={FadeInDown.delay(750).duration(600)} style={styles.previewWrap}>
-        <Card>
-          <View style={styles.previewHeader}>
-            <Text variant="h3">Design preview</Text>
-            <Text variant="caption">
-              Sample elements showing off this app’s design system. Restyle or
-              delete them.
-            </Text>
+        {/* ── 2-col Collection Grid ── */}
+        <View style={[styles.gridWrapper, { zIndex: activeCardId !== null ? 51 : 1 }]}>
+          <View style={styles.grid}>
+            {collections.map((item, index) => (
+              <CollectionCard 
+                key={item.id} 
+                item={item} 
+                styles={styles} 
+                index={index}
+                isActive={activeCardId === item.id}
+                onActivate={() => setActiveCardId(item.id)}
+              />
+            ))}
           </View>
-          <Input label="Email" placeholder="you@example.com" leftIcon="mail-outline" />
-          <View style={styles.previewButtons}>
-            <Button size="sm">Get started</Button>
-            <Button size="sm" variant="outline">
-              Learn more
-            </Button>
-          </View>
-          <View style={styles.statusRow}>
-            <Text variant="caption" color="success">
-              ● Success
-            </Text>
-            <Text variant="caption" color="warning">
-              ● Warning
-            </Text>
-            <Text variant="caption" color="danger">
-              ● Error
-            </Text>
-          </View>
-        </Card>
-      </Animated.View>
-    </Screen>
+        </View>
+      </Screen>
+
+      <CreateCollectionModal
+        visible={isCreateModalVisible}
+        onClose={() => setIsCreateModalVisible(false)}
+        onCreate={(data) => {
+          addCollection(data)
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+          setIsCreateModalVisible(false)
+        }}
+      />
+    </View>
   )
 }
 

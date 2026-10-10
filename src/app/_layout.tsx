@@ -1,11 +1,10 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router'
+import { Stack, DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect } from 'react'
 import { Platform } from 'react-native'
 
 import '@/global.css'
 
-import { AppTabs } from '@/components'
 import { ErrorBoundary } from '@/components/error'
 import { useIsDark } from '@/hooks'
 import { useThemeHydration } from '@/stores'
@@ -34,7 +33,19 @@ export default function RootLayout() {
   return (
     <ErrorBoundary>
       <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
-        <AppTabs />
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+          <Stack.Screen name="collection/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="save/[id]" options={{ headerShown: false }} />
+          <Stack.Screen
+            name="review"
+            options={{
+              headerShown: false,
+              presentation: 'fullScreenModal',
+              animation: 'slide_from_bottom',
+            }}
+          />
+        </Stack>
       </ThemeProvider>
     </ErrorBoundary>
   )

@@ -3,3 +3,4 @@
 // '@/components/error') so each folder keeps a single public API.
 export { default as AppTabs } from './AppTabs'
 export { Screen } from './Screen'
+export { CreateCollectionModal } from './CreateCollectionModal'
