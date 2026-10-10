@@ -1,6 +1,5 @@
 # thannu
 
-A [Kealy Studio](https://kealystudio.com) app — part of the **free tier** of the *App Dev with AI* course.
 
 Built with [Expo](https://expo.dev) and React Native. Uses **[development builds](https://docs.expo.dev/develop/development-builds/introduction/)**: you compile the app once (locally or in the cloud with EAS), install it on your simulator or phone, and from then on iterate with instant JavaScript reloads. Expo Go is not supported — this app ships native modules, and the Expo Go app in the stores lags behind SDK 56.
 
