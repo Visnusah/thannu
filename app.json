@@ -1,0 +1,83 @@
+{
+  "expo": {
+    "name": "thannu",
+    "slug": "thannu",
+    "version": "0.0.1",
+    "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
+    "scheme": "thannu",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.visnusah.thannu",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.visnusah.thannu",
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundImage": "./assets/images/logo.png",
+        "monochromeImage": "./assets/images/logo.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/images/splash.png",
+          "imageWidth": 200,
+          "resizeMode": "cover",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "backgroundColor": "#000000"
+          }
+        }
+      ],
+      "expo-sharing",
+      "expo-video",
+      "expo-notifications",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "$(PRODUCT_NAME) would like to access your camera"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "$(PRODUCT_NAME) would like to access your photos",
+          "cameraPermission": "$(PRODUCT_NAME) would like to access your camera"
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "$(PRODUCT_NAME) would like to use your location",
+          "locationAlwaysPermission": "$(PRODUCT_NAME) would like to use your location in the background",
+          "locationWhenInUsePermission": "$(PRODUCT_NAME) would like to use your location"
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "$(PRODUCT_NAME) would like to access your photos",
+          "savePhotosPermission": "$(PRODUCT_NAME) would like to save photos",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}
