@@ -1,38 +1,23 @@
 import { Ionicons } from '@expo/vector-icons'
+import * as Linking from 'expo-linking'
 import { useRouter } from 'expo-router'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import {
   Pressable,
   StyleSheet,
   View,
 } from 'react-native'
-import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutLeft, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
+import Animated, { FadeIn, SlideInRight, SlideOutLeft, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Text } from '@/components/ui'
-import { useColors, useIsDark, useResponsive } from '@/hooks'
+import { useCollectionsStore, useLinksStore } from '@/stores'
 import {
-  minTouchTarget,
   spacing,
   strokeWidth,
   thannuColors,
   thannuRadius,
 } from '@/lib'
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const UNREVIEWED_SAVES = [
-  {
-    id: '1',
-    title: 'Abdul moiz on Instagram',
-    domain: 'Instagram',
-    url: 'instagram.com/lowkeymoizzz...',
-    description: '26K likes, 136 comments - lowkeymoizzz on October 9, 2026: "Youngest in the room btw ...',
-    collection: 'Unsorted',
-    isVideo: true,
-    color: '#1B1E21',
-  },
-]
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
@@ -58,7 +43,10 @@ function PressableScale({ children, style, onPress, disabled, ...props }: any) {
 export default function ReviewScreen() {
   const router = useRouter()
   const insets = useSafeAreaInsets()
-  const { isSmall } = useResponsive()
+  const links = useLinksStore((state) => state.links)
+  const markReviewed = useLinksStore((state) => state.markReviewed)
+  const collections = useCollectionsStore((state) => state.collections)
+  const unreviewedLinks = links.filter((link) => link.reviewedAt === null)
   
   // Force a very dark theme for the review screen to match screenshots
   const bgColor = '#121212'
@@ -67,10 +55,11 @@ export default function ReviewScreen() {
   const cardColor = '#FFFFFF'
   
   const [currentIndex, setCurrentIndex] = useState(0)
-  const isComplete = currentIndex >= UNREVIEWED_SAVES.length
+  const isComplete = currentIndex >= unreviewedLinks.length
 
   const handleNext = () => {
-    setCurrentIndex(prev => prev + 1)
+    const item = unreviewedLinks[currentIndex]
+    if (item) markReviewed(item.id)
   }
 
   const handlePrev = () => {
@@ -88,7 +77,7 @@ export default function ReviewScreen() {
               {String(currentIndex + 1).padStart(2, '0')}
             </Text>
             <Text style={[styles.counterTotal, { color: secondaryColor }]}>
-              /{String(UNREVIEWED_SAVES.length).padStart(2, '0')}
+              /{String(unreviewedLinks.length).padStart(2, '0')}
             </Text>
           </View>
         </View>
@@ -107,8 +96,9 @@ export default function ReviewScreen() {
   )
 
   const renderReviewState = () => {
-    const item = UNREVIEWED_SAVES[currentIndex]
+    const item = unreviewedLinks[currentIndex]
     if (!item) return null
+    const collectionName = collections.find((collection) => collection.id === item.collectionId)?.name || 'Unsorted'
 
     return (
       <Animated.View
@@ -119,7 +109,7 @@ export default function ReviewScreen() {
       >
         {/* Progress Bar */}
         <View style={styles.progressContainer}>
-          <View style={[styles.progressBar, { width: `${((currentIndex + 1) / UNREVIEWED_SAVES.length) * 100}%` }]} />
+          <View style={[styles.progressBar, { width: `${((currentIndex + 1) / unreviewedLinks.length) * 100}%` }]} />
         </View>
 
         {/* Card */}
@@ -128,22 +118,18 @@ export default function ReviewScreen() {
             {/* Domain */}
             <View style={styles.domainRow}>
               <View style={styles.favicon}>
-                <Ionicons name="logo-instagram" size={14} color="#fff" />
+                <Ionicons name="link-outline" size={14} color="#fff" />
               </View>
               <Text style={styles.domainText}>{item.domain}</Text>
             </View>
 
             {/* Media Area */}
-            <View style={[styles.mediaArea, { backgroundColor: item.color }]}>
-              {item.isVideo && (
-                <View style={styles.playBtn}>
-                  <Ionicons name="play" size={24} color="#fff" />
-                </View>
-              )}
+            <View style={[styles.mediaArea, { backgroundColor: '#1B1E21' }] }>
+              <Ionicons name="link-outline" size={52} color="rgba(255,255,255,0.8)" />
               {/* Unsorted Badge overlay on image */}
               <View style={styles.unsortedBadge}>
                 <View style={styles.unsortedIcon} />
-                <Text style={styles.unsortedText}>{item.collection}</Text>
+                <Text style={styles.unsortedText}>{collectionName}</Text>
               </View>
             </View>
 
@@ -167,7 +153,7 @@ export default function ReviewScreen() {
 
           <PressableScale
             style={[styles.mainBtn, { backgroundColor: thannuColors.sun }]}
-            onPress={() => {}}
+             onPress={() => void Linking.openURL(item.url)}
           >
             <Text style={[styles.mainBtnText, { color: '#000' }]}>Open link</Text>
             <Ionicons name="arrow-forward" size={18} color="#000" />
@@ -195,11 +181,11 @@ export default function ReviewScreen() {
           <Ionicons name="checkmark" size={48} color="#fff" />
         </View>
         
-        <Text style={[styles.completeTitle, { color: textColor }]}>You're all caught up!</Text>
+        <Text style={[styles.completeTitle, { color: textColor }]}>You are all caught up!</Text>
         <Text style={[styles.completeSubtitle, { color: secondaryColor }]}>Great job.</Text>
         
         <View style={styles.viewedBadge}>
-          <Text style={styles.viewedText}>Viewed {UNREVIEWED_SAVES.length}</Text>
+          <Text style={styles.viewedText}>Reviewed {links.length - unreviewedLinks.length}</Text>
         </View>
       </View>
 

@@ -11,10 +11,9 @@ import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming } fr
 import { Screen } from '@/components'
 import { ScreenErrorBoundary } from '@/components/error'
 import { Text } from '@/components/ui'
-import { useColors, useResponsive, type ScreenSize, useIsDark } from '@/hooks'
+import { useColors, useResponsive, type ScreenSize } from '@/hooks'
 import {
   gridGap,
-  hardShadow,
   minTouchTarget,
   screenPaddingH,
   spacing,
@@ -23,17 +22,7 @@ import {
   thannuRadius,
   type Colors,
 } from '@/lib'
-
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const MOCK_SAVES = [
-  { id: '1', title: 'Abhishek Agarwal on Instagram', domain: 'Instagram', isVideo: true, color: '#3A9E2D' },
-  { id: '2', title: 'Volkan Erdogan on Instagram', domain: 'Instagram', isVideo: true, color: '#88989F' },
-  { id: '3', title: 'codeN’ on Instagram', domain: 'Instagram', isVideo: true, color: '#1E1E1E' },
-  { id: '4', title: 'Shubhaam Tiwary on Instagram', domain: 'Instagram', isVideo: true, color: '#1F1E24' },
-  { id: '5', title: 'Ankit Dungawat on Instagram', domain: 'Instagram', isVideo: false, color: '#1B69BC' },
-  { id: '6', title: 'Moksh Agrawal on Instagram', domain: 'Instagram', isVideo: true, color: '#25203A' },
-]
+import { useCollectionsStore, useLinksStore } from '@/stores'
 
 // ─── Styles ───────────────────────────────────────────────────────────────────
 
@@ -223,7 +212,7 @@ function SaveCard({
   styles,
   index,
 }: {
-  item: (typeof MOCK_SAVES)[number]
+  item: import('@/stores').LinkRecord
   styles: ReturnType<typeof createStyles>
   index: number
 }) {
@@ -234,48 +223,44 @@ function SaveCard({
   return (
     <Animated.View
       entering={FadeInDown.delay(100 + index * 50).duration(400)}
-      style={anim}
     >
-      <Pressable
-        style={styles.card}
-        onPressIn={() => scale.set(withTiming(0.97, { duration: 90 }))}
-        onPressOut={() => scale.set(withTiming(1, { duration: 130 }))}
-        onPress={() => router.push(`/save/${item.id}` as any)}
-      >
-        {/* Mock Image Area */}
-        <View style={[styles.cardImageArea, { backgroundColor: item.color }]}>
-          {item.isVideo && (
-            <View style={styles.playBtn}>
-              <Ionicons name="play" size={20} color="#fff" />
-            </View>
-          )}
-        </View>
-
-        {/* Info Area */}
-        <View style={styles.cardBody}>
-          <Text style={styles.cardTitle} numberOfLines={2}>
-            {item.title}
-          </Text>
-          <View style={styles.cardFooter}>
-            <View style={styles.favicon}>
-              <Ionicons name="logo-instagram" size={10} color="#fff" />
-            </View>
-            <Text style={styles.domain}>{item.domain}</Text>
+      <Animated.View style={anim}>
+        <Pressable
+          style={styles.card}
+          onPressIn={() => scale.set(withTiming(0.97, { duration: 90 }))}
+          onPressOut={() => scale.set(withTiming(1, { duration: 130 }))}
+          onPress={() => router.push(`/save/${item.id}` as any)}
+        >
+          {/* Media placeholder until metadata images are available. */}
+          <View style={[styles.cardImageArea, { backgroundColor: item.domain === 'instagram.com' ? '#E1306C' : thannuColors.slate }]}>
+            <Ionicons name="link-outline" size={28} color="#fff" />
           </View>
-        </View>
-      </Pressable>
+
+          {/* Info Area */}
+          <View style={styles.cardBody}>
+            <Text style={styles.cardTitle} numberOfLines={2}>
+              {item.title}
+            </Text>
+            <View style={styles.cardFooter}>
+              <View style={[styles.favicon, { backgroundColor: thannuColors.slate }]}>
+                <Ionicons name="link-outline" size={10} color="#fff" />
+              </View>
+              <Text style={styles.domain}>{item.domain}</Text>
+            </View>
+          </View>
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   )
 }
 
 // ─── Main Screen ──────────────────────────────────────────────────────────────
 
-import { useCollectionsStore } from '@/stores'
-
 function CollectionScreenContent() {
   const router = useRouter()
   const { id } = useLocalSearchParams<{ id: string }>()
   const { collections } = useCollectionsStore()
+  const links = useLinksStore((state) => state.links)
   
   const { isSmall, width, size } = useResponsive()
   const colors = useColors()
@@ -283,6 +268,7 @@ function CollectionScreenContent() {
 
   const collection = collections.find((c) => c.id === id)
   const title = collection ? collection.name : id || 'Collection'
+  const collectionLinks = links.filter((link) => link.collectionId === id)
 
   return (
     <Screen scroll>
@@ -296,7 +282,7 @@ function CollectionScreenContent() {
         
         <View style={styles.headerTitleContainer}>
           <Text style={styles.headerTitle}>{title}</Text>
-          <Text style={styles.headerSubtitle}>{MOCK_SAVES.length} items · 0 subcollections</Text>
+          <Text style={styles.headerSubtitle}>{collectionLinks.length} items · 0 subcollections</Text>
         </View>
 
         <View style={styles.headerIcons}>
@@ -314,14 +300,22 @@ function CollectionScreenContent() {
 
       {/* ── Section Title ── */}
       <Text style={styles.sectionTitle}>
-        SAVES ({MOCK_SAVES.length})
+        SAVES ({collectionLinks.length})
       </Text>
 
       {/* ── Grid ── */}
       <View style={styles.grid}>
-        {MOCK_SAVES.map((item, index) => (
+        {collectionLinks.map((item, index) => (
           <SaveCard key={item.id} item={item} styles={styles} index={index} />
         ))}
+        {collectionLinks.length === 0 && (
+          <View style={{ width: '100%', alignItems: 'center', paddingVertical: spacing.xl }}>
+            <Ionicons name="file-tray-outline" size={40} color={colors.secondary} />
+            <Text style={{ color: colors.secondary, marginTop: spacing.md }}>
+              Nothing here yet — save a link from Home.
+            </Text>
+          </View>
+        )}
       </View>
     </Screen>
   )

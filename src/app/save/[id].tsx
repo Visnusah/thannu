@@ -1,39 +1,21 @@
 import { Ionicons } from '@expo/vector-icons'
-import { useRouter } from 'expo-router'
-import { useMemo, useState } from 'react'
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  View,
-} from 'react-native'
+import * as Linking from 'expo-linking'
+import { useLocalSearchParams, useRouter } from 'expo-router'
+import { useState } from 'react'
+import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
 import Animated, { FadeIn, SlideInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Text } from '@/components/ui'
-import { useColors, useIsDark, useResponsive } from '@/hooks'
+import { useColors } from '@/hooks'
+import { useCollectionsStore, useLinksStore } from '@/stores'
 import {
-  hardShadow,
   minTouchTarget,
   spacing,
   strokeWidth,
   thannuColors,
   thannuRadius,
 } from '@/lib'
-
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-
-const MOCK_SAVE = {
-  id: '5',
-  title: 'Ankit Dungawat on Instagram',
-  domain: 'Instagram',
-  url: 'instagram.com/codewith_random/p/Ddld...',
-  date: '14 Sep 2026 at 9:09 AM',
-  collection: 'DSA',
-  collectionColor: '#F45D8E', // Pinkish mock color
-  description: 'codewith_random on September 10, 2026: "I was really bad at DSA until I found these websites. 😭💻\n\nIf DSA feels confusing because you’re trying to understand algorithms only through code, visualization can change the way you learn.\n\nThese websites let you visually explore things like array..."',
-  color: '#1B69BC', // Mock hero image background color
-}
 
 // ─── Components ───────────────────────────────────────────────────────────────
 
@@ -73,12 +55,14 @@ function ActionButton({
   icon,
   label,
   color,
+  onPress,
   isFirst,
   isLast,
 }: {
   icon: keyof typeof Ionicons.glyphMap
   label: string
   color: string
+  onPress?: () => void
   isFirst?: boolean
   isLast?: boolean
 }) {
@@ -95,8 +79,9 @@ function ActionButton({
           isFirst && { borderTopLeftRadius: thannuRadius.sm, borderBottomLeftRadius: thannuRadius.sm },
           isLast && { borderTopRightRadius: thannuRadius.sm, borderBottomRightRadius: thannuRadius.sm, borderRightWidth: strokeWidth.card },
         ]}
-        onPressIn={() => scale.set(withTiming(0.97, { duration: 90 }))}
-        onPressOut={() => scale.set(withTiming(1, { duration: 130 }))}
+         onPressIn={() => scale.set(withTiming(0.97, { duration: 90 }))}
+         onPressOut={() => scale.set(withTiming(1, { duration: 130 }))}
+         onPress={onPress}
       >
         <Ionicons name={icon} size={20} color={color} />
         <Text style={[styles.actionLabel, { color }]}>{label}</Text>
@@ -107,18 +92,53 @@ function ActionButton({
 
 export default function SaveDetailScreen() {
   const router = useRouter()
+  const { id } = useLocalSearchParams<{ id: string }>()
   const colors = useColors()
   const insets = useSafeAreaInsets()
   const [isExpanded, setIsExpanded] = useState(false)
-
+  const link = useLinksStore((state) => state.links.find((item) => item.id === id))
+  const removeLink = useLinksStore((state) => state.removeLink)
+  const collections = useCollectionsStore((state) => state.collections)
   const openLinkScale = useSharedValue(1)
   const openLinkAnim = useAnimatedStyle(() => ({ transform: [{ scale: openLinkScale.get() }] }))
+
+  if (!link) {
+    return (
+      <View style={[styles.emptyState, { backgroundColor: colors.surface }]}>
+        <Ionicons name="link-outline" size={44} color={colors.secondary} />
+        <Text style={[styles.emptyTitle, { color: colors.text }]}>Save not found</Text>
+        <Text style={[styles.emptySubtitle, { color: colors.secondary }]}>This link may have been deleted.</Text>
+        <Pressable style={[styles.emptyButton, { backgroundColor: thannuColors.sun }]} onPress={() => router.back()}>
+          <Text style={styles.emptyButtonText}>Go back</Text>
+        </Pressable>
+      </View>
+    )
+  }
+
+  const collection = collections.find((item) => item.id === link.collectionId)
+  const collectionName = collection?.name || 'Unsorted'
+  const collectionColor = collection?.color || thannuColors.slate
+  const createdDate = new Date(link.createdAt).toLocaleDateString()
+  const openLink = () => void Linking.openURL(link.url)
+  const deleteLink = () => {
+    Alert.alert('Delete this save?', "You can't undo this.", [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: () => {
+          removeLink(link.id)
+          router.back()
+        },
+      },
+    ])
+  }
 
   return (
     <View style={[styles.container, { backgroundColor: colors.surface }]}>
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         {/* ── Hero Image Area ── */}
-        <Animated.View entering={FadeIn.duration(400)} style={[styles.heroArea, { backgroundColor: MOCK_SAVE.color }]}>
+        <Animated.View entering={FadeIn.duration(400)} style={[styles.heroArea, { backgroundColor: collectionColor }] }>
           {/* Header Controls */}
           <View style={[styles.headerOverlay, { paddingTop: Math.max(insets.top, spacing.md) }]}>
             <IconButton icon="arrow-back" onPress={() => router.back()} accessibilityLabel="Go back" />
@@ -142,13 +162,13 @@ export default function SaveDetailScreen() {
             <View style={styles.favicon}>
               <Ionicons name="logo-instagram" size={14} color="#fff" />
             </View>
-            <Text style={[styles.domainText, { color: colors.text }]}>{MOCK_SAVE.domain}</Text>
+            <Text style={[styles.domainText, { color: colors.text }]}>{link.domain}</Text>
           </View>
 
           {/* Title & Edit Row */}
           <View style={styles.titleRow}>
             <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
-              {MOCK_SAVE.title}
+              {link.title}
             </Text>
             <IconButton icon="pencil" onPress={() => {}} accessibilityLabel="Edit" />
           </View>
@@ -156,10 +176,10 @@ export default function SaveDetailScreen() {
           {/* Badges Row */}
           <View style={styles.badgesRow}>
             <View style={[styles.collectionBadge, { borderColor: colors.text }]}>
-              <View style={[styles.collectionColorDot, { backgroundColor: MOCK_SAVE.collectionColor, borderColor: colors.text }]} />
-              <Text style={[styles.collectionBadgeText, { color: colors.text }]}>{MOCK_SAVE.collection}</Text>
+              <View style={[styles.collectionColorDot, { backgroundColor: collectionColor, borderColor: colors.text }]} />
+              <Text style={[styles.collectionBadgeText, { color: colors.text }]}>{collectionName}</Text>
             </View>
-            <Text style={[styles.dateText, { color: colors.secondary }]}>{MOCK_SAVE.date}</Text>
+            <Text style={[styles.dateText, { color: colors.secondary }]}>{createdDate}</Text>
           </View>
 
           {/* Open Link Button */}
@@ -171,11 +191,12 @@ export default function SaveDetailScreen() {
               ]}
               onPressIn={() => openLinkScale.set(withTiming(0.97, { duration: 90 }))}
               onPressOut={() => openLinkScale.set(withTiming(1, { duration: 130 }))}
+              onPress={openLink}
             >
               <View style={styles.openLinkContent}>
                 <Text style={styles.openLinkTitle}>Open link</Text>
                 <Text style={styles.openLinkSubtitle} numberOfLines={1}>
-                  {MOCK_SAVE.url}
+                  {link.url}
                 </Text>
               </View>
               <View style={styles.openLinkIconWrap}>
@@ -186,10 +207,10 @@ export default function SaveDetailScreen() {
 
           {/* Segmented Actions */}
           <View style={[styles.actionsRow, { shadowColor: colors.text, backgroundColor: colors.surface }]}>
-            <ActionButton icon="share-outline" label="Share" color={colors.text} isFirst />
+            <ActionButton icon="share-outline" label="Share" color={colors.text} isFirst onPress={() => void Linking.openURL(link.url)} />
             <ActionButton icon="folder-outline" label="Move" color={colors.text} />
             <ActionButton icon="refresh-outline" label="Refresh" color={colors.text} />
-            <ActionButton icon="trash-outline" label="Delete" color={thannuColors.coral} isLast />
+            <ActionButton icon="trash-outline" label="Delete" color={thannuColors.coral} isLast onPress={deleteLink} />
           </View>
 
           {/* Description Section */}
@@ -199,7 +220,7 @@ export default function SaveDetailScreen() {
               style={[styles.bodyText, { color: colors.text }]}
               numberOfLines={isExpanded ? undefined : 6}
             >
-              {MOCK_SAVE.description}
+              {link.description || 'No description added yet.'}
             </Text>
             {!isExpanded && (
               <Pressable onPress={() => setIsExpanded(true)} hitSlop={8}>
@@ -211,7 +232,9 @@ export default function SaveDetailScreen() {
           {/* Tags Section */}
           <View style={[styles.section, { paddingBottom: Math.max(insets.bottom, 48) }]}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>TAGS</Text>
-            <Text style={[styles.bodyText, { color: colors.secondary }]}>No tags added yet.</Text>
+            <Text style={[styles.bodyText, { color: colors.secondary }]}>
+              {link.tags.length > 0 ? link.tags.map((tag) => `#${tag}`).join('  ') : 'No tags added yet.'}
+            </Text>
           </View>
         </Animated.View>
       </ScrollView>
@@ -220,6 +243,36 @@ export default function SaveDetailScreen() {
 }
 
 const styles = StyleSheet.create({
+  emptyState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: spacing.xl,
+  },
+  emptyTitle: {
+    fontSize: 24,
+    fontWeight: '900',
+    marginTop: spacing.lg,
+  },
+  emptySubtitle: {
+    fontSize: 15,
+    marginTop: spacing.sm,
+    marginBottom: spacing.xl,
+  },
+  emptyButton: {
+    minHeight: minTouchTarget,
+    borderWidth: strokeWidth.card,
+    borderColor: '#121212',
+    borderRadius: thannuRadius.md,
+    paddingHorizontal: spacing.xl,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyButtonText: {
+    color: '#121212',
+    fontSize: 16,
+    fontWeight: '800',
+  },
   container: {
     flex: 1,
   },

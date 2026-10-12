@@ -2,7 +2,7 @@ import * as Clipboard from 'expo-clipboard'
 import * as Haptics from 'expo-haptics'
 import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useMemo, useState } from 'react'
-import { useRouter, Link } from 'expo-router'
+import { useRouter } from 'expo-router'
 import {
   Pressable,
   StyleSheet,
@@ -25,10 +25,16 @@ import { Screen, CreateCollectionModal } from '@/components'
 import { ScreenErrorBoundary } from '@/components/error'
 import { Text } from '@/components/ui'
 import { useColors, useResponsive, type ScreenSize, useIsDark } from '@/hooks'
-import { useCollectionsStore, type Collection, type CollectionPriority } from '@/stores'
+import {
+  useCollectionsStore,
+  isValidLinkUrl,
+  useLinksStore,
+  useSettingsStore,
+  type Collection,
+  type CollectionPriority,
+} from '@/stores'
 import {
   gridGap,
-  hardShadow,
   minTouchTarget,
   screenPaddingH,
   spacing,
@@ -322,10 +328,10 @@ function IconButton({
       <Pressable
         style={styles.btn}
         onPressIn={() => {
-          scale.value = withTiming(0.93, { duration: 90 })
+          scale.set(withTiming(0.93, { duration: 90 }))
         }}
         onPressOut={() => {
-          scale.value = withTiming(1, { duration: 130 })
+          scale.set(withTiming(1, { duration: 130 }))
         }}
         onPress={onPress}
         accessibilityRole="button"
@@ -355,38 +361,39 @@ function Banner({
   return (
     <Animated.View
       entering={FadeInDown.delay(500).duration(500)}
-      style={anim}
     >
-      <Pressable
-        style={[styles.banner, styles.bannerMint]}
-        onPressIn={() => {
-          scale.value = withTiming(0.98, { duration: 90 })
-        }}
-        onPressOut={() => {
-          scale.value = withTiming(1, { duration: 130 })
-        }}
-        onPress={onPress}
-        accessibilityRole="button"
-        accessibilityLabel={title}
-      >
-        <View style={[styles.bannerIcon, styles.bannerMintIcon]}>
-          <Ionicons name="time-outline" size={20} color={colors.text} />
-        </View>
-        <View style={styles.bannerText}>
-          <Text variant="label" style={{ color: colors.text, fontWeight: '700' }}>
-            {title}
-          </Text>
-          <Text variant="caption" style={{ color: colors.secondary }}>
-            {subtitle}
-          </Text>
-        </View>
-        <Ionicons
-          name="chevron-forward"
-          size={16}
-          color={colors.text}
-          style={styles.bannerChevron}
-        />
-      </Pressable>
+      <Animated.View style={anim}>
+        <Pressable
+          style={[styles.banner, styles.bannerMint]}
+          onPressIn={() => {
+            scale.set(withTiming(0.98, { duration: 90 }))
+          }}
+          onPressOut={() => {
+            scale.set(withTiming(1, { duration: 130 }))
+          }}
+          onPress={onPress}
+          accessibilityRole="button"
+          accessibilityLabel={title}
+        >
+          <View style={[styles.bannerIcon, styles.bannerMintIcon]}>
+            <Ionicons name="time-outline" size={20} color={colors.text} />
+          </View>
+          <View style={styles.bannerText}>
+            <Text variant="label" style={{ color: colors.text, fontWeight: '700' }}>
+              {title}
+            </Text>
+            <Text variant="caption" style={{ color: colors.secondary }}>
+              {subtitle}
+            </Text>
+          </View>
+          <Ionicons
+            name="chevron-forward"
+            size={16}
+            color={colors.text}
+            style={styles.bannerChevron}
+          />
+        </Pressable>
+      </Animated.View>
     </Animated.View>
   )
 }
@@ -485,10 +492,10 @@ function CollectionCard({
         <Pressable
           style={styles.collectionCard}
           onPressIn={() => {
-            if (!isActive) scale.value = withTiming(0.97, { duration: 90 })
+            if (!isActive) scale.set(withTiming(0.97, { duration: 90 }))
           }}
           onPressOut={() => {
-            if (!isActive) scale.value = withTiming(1, { duration: 130 })
+            if (!isActive) scale.set(withTiming(1, { duration: 130 }))
           }}
           onPress={() => {
             if (!isActive) {
@@ -608,26 +615,30 @@ function HomeScreenContent() {
   const styles = useMemo(() => createStyles(colors, isSmall, width, size, isDark), [colors, isSmall, width, size, isDark])
 
   const { collections, addCollection } = useCollectionsStore()
+  const links = useLinksStore((state) => state.links)
+  const addLink = useLinksStore((state) => state.addLink)
+  const hapticsEnabled = useSettingsStore((state) => state.hapticsEnabled)
 
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
   
-  // Interactive testing state
   const [linkInput, setLinkInput] = useState('')
-  const [newSavesCount, setNewSavesCount] = useState(1)
+  const newSavesCount = links.filter((link) => link.reviewedAt === null).length
 
   const handlePaste = async () => {
     const text = await Clipboard.getStringAsync()
     if (text) {
       setLinkInput(text)
-      Haptics.selectionAsync()
+      if (hapticsEnabled) Haptics.selectionAsync()
     }
   }
 
   const handleSave = () => {
-    if (!linkInput.trim()) return
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
-    setNewSavesCount((prev) => prev + 1)
+    const url = linkInput.trim()
+    if (!isValidLinkUrl(url)) return
+
+    addLink({ url })
+    if (hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     setLinkInput('')
   }
 
@@ -652,7 +663,7 @@ function HomeScreenContent() {
         <Animated.View entering={FadeIn.duration(400)} style={styles.header}>
           <View />
           <View style={styles.headerIcons}>
-            <IconButton icon="settings-outline" accessibilityLabel="Settings" />
+            <IconButton icon="settings-outline" accessibilityLabel="Settings" onPress={() => router.push('/settings')} />
             <IconButton icon="folder-open-outline" accessibilityLabel="Add folder" onPress={() => setIsCreateModalVisible(true)} />
             <IconButton icon="search-outline" accessibilityLabel="Search" />
           </View>
@@ -745,16 +756,27 @@ function HomeScreenContent() {
         {/* ── 2-col Collection Grid ── */}
         <View style={[styles.gridWrapper, { zIndex: activeCardId !== null ? 51 : 1 }]}>
           <View style={styles.grid}>
-            {collections.map((item, index) => (
-              <CollectionCard 
-                key={item.id} 
-                item={item} 
-                styles={styles} 
-                index={index}
-                isActive={activeCardId === item.id}
-                onActivate={() => setActiveCardId(item.id)}
-              />
-            ))}
+            {[...collections]
+              .sort((a, b) => Number(b.priority !== 'none') - Number(a.priority !== 'none'))
+              .map((item, index) => {
+                const itemLinks = links.filter((link) => link.collectionId === item.id)
+                const displayItem = {
+                  ...item,
+                  itemCount: itemLinks.length,
+                  newCount: itemLinks.filter((link) => link.reviewedAt === null).length,
+                }
+
+                return (
+                  <CollectionCard
+                    key={displayItem.id}
+                    item={displayItem}
+                    styles={styles}
+                    index={index}
+                    isActive={activeCardId === displayItem.id}
+                    onActivate={() => setActiveCardId(displayItem.id)}
+                  />
+                )
+              })}
           </View>
         </View>
       </Screen>
@@ -764,7 +786,7 @@ function HomeScreenContent() {
         onClose={() => setIsCreateModalVisible(false)}
         onCreate={(data) => {
           addCollection(data)
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
+          if (hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
           setIsCreateModalVisible(false)
         }}
       />

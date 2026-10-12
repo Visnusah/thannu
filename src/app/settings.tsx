@@ -10,7 +10,6 @@ import { Text } from '@/components/ui'
 import { useColors, useResponsive } from '@/hooks'
 import { useSettingsStore, useThemeStore } from '@/stores'
 import {
-  hardShadow,
   spacing,
   strokeWidth,
   thannuColors,

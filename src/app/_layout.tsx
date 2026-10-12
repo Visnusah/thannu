@@ -1,4 +1,12 @@
-import { Stack, DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router'
+import {
+  Stack,
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
+  useRootNavigationState,
+  useRouter,
+  useSegments,
+} from 'expo-router'
 import * as SplashScreen from 'expo-splash-screen'
 import { useEffect } from 'react'
 import { Platform } from 'react-native'
@@ -6,7 +14,7 @@ import { Platform } from 'react-native'
 import '@/global.css'
 
 import { ErrorBoundary } from '@/components/error'
-import { useIsDark } from '@/hooks'
+import { useAuth, useIsDark } from '@/hooks'
 import { useThemeHydration } from '@/stores'
 
 if (Platform.OS !== 'web') {
@@ -16,17 +24,36 @@ if (Platform.OS !== 'web') {
 export default function RootLayout() {
   const isDark = useIsDark()
   const hydrated = useThemeHydration()
+  const { user, initializing: authInitializing } = useAuth()
+  const router = useRouter()
+  const segments = useSegments()
+  const navigationState = useRootNavigationState()
+
+  // The generated typed-route manifest can lag until Expo regenerates it after
+  // adding a route, so compare the segment as a runtime string here.
+  const firstSegment = String(segments[0] ?? '')
+  const isAuthRoute = firstSegment === 'login' || firstSegment === 'register'
 
   useEffect(() => {
-    if (hydrated) {
+    if (hydrated && !authInitializing) {
       SplashScreen.hideAsync()
     }
-  }, [hydrated])
+  }, [hydrated, authInitializing])
+
+  useEffect(() => {
+    if (!navigationState?.key || authInitializing) return
+
+    if (!user && !isAuthRoute) {
+      router.replace('/login' as never)
+    } else if (user && isAuthRoute) {
+      router.replace('/(tabs)')
+    }
+  }, [authInitializing, isAuthRoute, navigationState?.key, router, user])
 
   // Hold the splash screen until the persisted theme mode has loaded, so the
   // first frame renders in the right theme. Web renders immediately — its
   // static output has no splash screen to hide behind.
-  if (!hydrated && Platform.OS !== 'web') {
+  if ((!hydrated || authInitializing) && Platform.OS !== 'web') {
     return null
   }
 
@@ -34,6 +61,8 @@ export default function RootLayout() {
     <ErrorBoundary>
       <ThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="login" options={{ headerShown: false }} />
+          <Stack.Screen name="register" options={{ headerShown: false }} />
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="collection/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="save/[id]" options={{ headerShown: false }} />
