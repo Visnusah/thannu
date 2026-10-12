@@ -15,17 +15,29 @@ export type Collection = {
   newCount: number
   priority: CollectionPriority
   createdAt: number
+  isSystem?: boolean
 }
 
 // Initial mock data to show something if store is completely empty
 const INITIAL_COLLECTIONS: Collection[] = [
   {
+    id: 'unsorted',
+    name: 'Unsorted',
+    icon: 'inbox-outline',
+    color: thannuColors.slate,
+    itemCount: 0,
+    newCount: 0,
+    priority: 'none',
+    createdAt: 0,
+    isSystem: true,
+  },
+  {
     id: '1',
     name: 'Recipes',
     icon: 'restaurant-outline',
     color: thannuColors.orange,
-    itemCount: 24,
-    newCount: 3,
+    itemCount: 0,
+    newCount: 0,
     priority: 'high',
     createdAt: Date.now() - 100000,
   },
@@ -34,7 +46,7 @@ const INITIAL_COLLECTIONS: Collection[] = [
     name: 'Travel',
     icon: 'airplane-outline',
     color: thannuColors.blue,
-    itemCount: 13,
+    itemCount: 0,
     newCount: 0,
     priority: 'none',
     createdAt: Date.now() - 50000,
@@ -44,7 +56,7 @@ const INITIAL_COLLECTIONS: Collection[] = [
     name: 'Course',
     icon: 'flash-outline',
     color: thannuColors.violet,
-    itemCount: 6,
+    itemCount: 0,
     newCount: 0,
     priority: 'none',
     createdAt: Date.now() - 20000,
@@ -54,8 +66,8 @@ const INITIAL_COLLECTIONS: Collection[] = [
     name: 'Tools',
     icon: 'folder-outline',
     color: thannuColors.ink,
-    itemCount: 8,
-    newCount: 1,
+    itemCount: 0,
+    newCount: 0,
     priority: 'none',
     createdAt: Date.now() - 10000,
   },
@@ -87,7 +99,7 @@ export const useCollectionsStore = create<CollectionsState>()(
         }),
       removeCollection: (id) =>
         set((state) => ({
-          collections: state.collections.filter((c) => c.id !== id),
+          collections: state.collections.filter((c) => c.id !== id || c.isSystem),
         })),
     }),
     {
