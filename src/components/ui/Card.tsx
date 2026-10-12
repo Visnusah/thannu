@@ -2,7 +2,7 @@ import { useMemo, type PropsWithChildren } from 'react'
 import { StyleSheet, View, type StyleProp, type ViewStyle } from 'react-native'
 
 import { useColors, useResponsive } from '@/hooks'
-import { spacing, borderRadius, hardShadow, thannuColors, strokeWidth, type Colors } from '@/lib'
+import { spacing, borderRadius, strokeWidth, type Colors } from '@/lib'
 
 type CardVariant = 'default' | 'brutalist'
 

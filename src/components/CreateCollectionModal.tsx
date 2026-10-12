@@ -48,11 +48,15 @@ export function CreateCollectionModal({ visible, onClose, onCreate }: CreateColl
   const [selectedIcon, setSelectedIcon] = useState<typeof COLLECTION_ICONS[number]>(COLLECTION_ICONS[0])
 
   useEffect(() => {
-    if (visible) {
+    if (!visible) return
+
+    const frame = requestAnimationFrame(() => {
       setName('')
       setSelectedColor(COLLECTION_COLORS[0])
       setSelectedIcon(COLLECTION_ICONS[0])
-    }
+    })
+
+    return () => cancelAnimationFrame(frame)
   }, [visible])
 
   if (!visible) return null
