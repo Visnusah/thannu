@@ -71,7 +71,7 @@ const createStyles = (colors: Colors, isSmall: boolean) =>
     },
     brandName: {
       color: colors.text,
-      fontSize: isSmall ? 32 : 36,
+      fontSize: isSmall ? 22 : 36,
       fontWeight: fontWeight.bold,
       letterSpacing: -1,
       textAlign: 'center',
