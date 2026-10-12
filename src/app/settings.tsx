@@ -1,8 +1,10 @@
 import { Ionicons } from '@expo/vector-icons'
 import { useMemo } from 'react'
-import { Pressable, StyleSheet, Switch, View } from 'react-native'
+import { Alert, Pressable, StyleSheet, Switch, View } from 'react-native'
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useRouter } from 'expo-router'
+
+import { signOut, getFirebaseErrorMessage } from '@/services/firebase'
 
 import { Screen } from '@/components'
 import { ScreenErrorBoundary } from '@/components/error'
@@ -232,6 +234,29 @@ function SettingsScreenContent() {
   const mode = useThemeStore((state) => state.mode)
   const setMode = useThemeStore((state) => state.setMode)
 
+  function handleLogout() {
+    Alert.alert(
+      'Sign Out',
+      'Are you sure you want to sign out?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Sign Out',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await signOut()
+              router.replace('/login')
+            } catch (error) {
+              Alert.alert('Error', getFirebaseErrorMessage(error))
+            }
+          },
+        },
+      ],
+      { cancelable: true }
+    )
+  }
+
   return (
     <Screen scroll>
       <View style={styles.header}>
@@ -357,6 +382,14 @@ function SettingsScreenContent() {
         <Text style={styles.sectionLabel} allowFontScaling={false}>
           Account
         </Text>
+        <SettingsRow
+          icon="log-out-outline"
+          title="Sign Out"
+          subtitle="Sign out of your Thannu account"
+          isDanger={true}
+          onPress={handleLogout}
+          styles={styles}
+        />
         <SettingsRow
           icon="trash-outline"
           title="Delete All Data"
