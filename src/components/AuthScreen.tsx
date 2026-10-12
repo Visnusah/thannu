@@ -15,11 +15,6 @@ import { Input } from '@/components/ui/Input'
 import { Text } from '@/components/ui/Text'
 import { useAuth, useColors, useResponsive } from '@/hooks'
 import {
-  getFirebaseErrorMessage,
-  signIn,
-  signUp,
-} from '@/services/firebase'
-import {
   fontSize,
   fontWeight,
   minTouchTarget,
@@ -29,6 +24,11 @@ import {
   thannuRadius,
   type Colors,
 } from '@/lib'
+import {
+  getFirebaseErrorMessage,
+  signIn,
+  signUp,
+} from '@/services/firebase'
 
 type AuthMode = 'signIn' | 'signUp'
 
@@ -45,10 +45,15 @@ const createStyles = (colors: Colors, isSmall: boolean) =>
       width: '100%',
       maxWidth: 440,
       alignSelf: 'center',
-      paddingVertical: isSmall ? spacing.lg : spacing.xl,
+      paddingTop: isSmall ? spacing.xl : 48,
+      paddingBottom: isSmall ? spacing.lg : 32,
       gap: spacing.lg,
     },
-    brand: { alignItems: 'center', gap: spacing.sm },
+    brand: {
+      alignItems: 'center',
+      alignSelf: 'stretch',
+      gap: spacing.sm,
+    },
     brandMark: {
       width: 58,
       height: 58,
@@ -69,6 +74,7 @@ const createStyles = (colors: Colors, isSmall: boolean) =>
       fontSize: isSmall ? 32 : 36,
       fontWeight: fontWeight.bold,
       letterSpacing: -1,
+      textAlign: 'center',
     },
     tagline: { textAlign: 'center', color: colors.secondary },
     card: {
@@ -198,7 +204,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
   }
 
   return (
-    <Screen scroll centered horizontalPadding={isSmall ? spacing.md : spacing.xl}>
+    <Screen scroll horizontalPadding={isSmall ? spacing.md : spacing.xl}>
       <KeyboardAvoidingView
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
         style={styles.keyboard}
@@ -208,7 +214,7 @@ export function AuthScreen({ mode }: AuthScreenProps) {
             <View style={styles.brandMark}>
               <Ionicons name="bookmark" size={30} color={thannuColors.violet} />
             </View>
-            <Text style={styles.brandName}>THANNU</Text>
+            <Text style={styles.brandName}>Thannu</Text>
             <Text variant="bodySmall" style={styles.tagline}>
               Save it. Get reminded.
             </Text>
