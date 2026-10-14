@@ -4,6 +4,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'expo-router'
 import {
+  PanResponder,
   Pressable,
   StyleSheet,
   TextInput,
@@ -14,6 +15,7 @@ import Animated, {
   FadeIn,
   FadeInDown,
   FadeOut,
+  runOnJS,
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
@@ -24,7 +26,7 @@ import Animated, {
 import { Screen, CreateCollectionModal } from '@/components'
 import { ScreenErrorBoundary } from '@/components/error'
 import { Text } from '@/components/ui'
-import { useColors, useResponsive, type ScreenSize, useIsDark } from '@/hooks'
+import { useColors, useResponsive, type ScreenSize, useIsDark, useSupabaseSync } from '@/hooks'
 import {
   useCollectionsStore,
   isValidLinkUrl,
@@ -348,32 +350,60 @@ function Banner({
   subtitle,
   styles,
   onPress,
+  onDismiss,
 }: {
   title: string
   subtitle: string
   styles: ReturnType<typeof createStyles>
   onPress?: () => void
+  onDismiss?: () => void
 }) {
   const colors = useColors()
-  const scale = useSharedValue(1)
-  const anim = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }))
+  const translateX = useSharedValue(0)
+  const opacity = useSharedValue(1)
+  const hapticsEnabled = useSettingsStore((state) => state.hapticsEnabled)
+
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) =>
+      gestureState.dx > 10 && Math.abs(gestureState.dy) < 15,
+    onPanResponderMove: (_, gestureState) => {
+      if (gestureState.dx > 0) {
+        translateX.set(gestureState.dx)
+      }
+    },
+    onPanResponderRelease: (_, gestureState) => {
+      if (gestureState.dx > 75 || gestureState.vx > 0.5) {
+        translateX.set(
+          withTiming(400, { duration: 250 }, () => {
+            if (onDismiss) runOnJS(onDismiss)()
+          })
+        )
+        opacity.set(withTiming(0, { duration: 200 }))
+        if (hapticsEnabled) {
+          runOnJS(Haptics.notificationAsync)(Haptics.NotificationFeedbackType.Success)
+        }
+      } else {
+        translateX.set(withSpring(0, { damping: 15 }))
+      }
+    },
+  })
+
+  const bannerAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ translateX: translateX.value }],
+    opacity: opacity.value,
+  }))
 
   return (
-    <Animated.View
-      entering={FadeInDown.delay(500).duration(500)}
-    >
-      <Animated.View style={anim}>
+    <Animated.View entering={FadeInDown.delay(500).duration(500)}>
+      <Animated.View
+        style={bannerAnimStyle}
+        {...panResponder.panHandlers}
+      >
         <Pressable
           style={[styles.banner, styles.bannerMint]}
-          onPressIn={() => {
-            scale.set(withTiming(0.98, { duration: 90 }))
-          }}
-          onPressOut={() => {
-            scale.set(withTiming(1, { duration: 130 }))
-          }}
           onPress={onPress}
           accessibilityRole="button"
-          accessibilityLabel={title}
+          accessibilityLabel={`${title}. Swipe right to clear.`}
         >
           <View style={[styles.bannerIcon, styles.bannerMintIcon]}>
             <Ionicons name="time-outline" size={20} color={colors.text} />
@@ -383,15 +413,25 @@ function Banner({
               {title}
             </Text>
             <Text variant="caption" style={{ color: colors.secondary }}>
-              {subtitle}
+              {subtitle} · Swipe right to clear
             </Text>
           </View>
-          <Ionicons
-            name="chevron-forward"
-            size={16}
-            color={colors.text}
-            style={styles.bannerChevron}
-          />
+          <Pressable
+            hitSlop={12}
+            onPress={(e) => {
+              e.stopPropagation()
+              if (onDismiss) onDismiss()
+            }}
+            accessibilityLabel="Clear notification"
+            accessibilityRole="button"
+          >
+            <Ionicons
+              name="checkmark-circle-outline"
+              size={22}
+              color={colors.text}
+              style={{ opacity: 0.6 }}
+            />
+          </Pressable>
         </Pressable>
       </Animated.View>
     </Animated.View>
@@ -614,10 +654,11 @@ function HomeScreenContent() {
   const isDark = useIsDark()
   const styles = useMemo(() => createStyles(colors, isSmall, width, size, isDark), [colors, isSmall, width, size, isDark])
 
-  const { collections, addCollection } = useCollectionsStore()
+  const { collections, addCollection, ensureUnsortedCollection } = useCollectionsStore()
   const links = useLinksStore((state) => state.links)
   const addLink = useLinksStore((state) => state.addLink)
   const hapticsEnabled = useSettingsStore((state) => state.hapticsEnabled)
+  const { pushCollection, pushLink, markAllReviewed } = useSupabaseSync()
 
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
@@ -637,9 +678,22 @@ function HomeScreenContent() {
     const url = linkInput.trim()
     if (!isValidLinkUrl(url)) return
 
-    addLink({ url })
+    // Ensure Unsorted collection exists; if missing, create it automatically
+    const unsortedCol = ensureUnsortedCollection()
+
+    const newLinkId = addLink({
+      url,
+      collectionId: unsortedCol.id,
+    })
     if (hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
     setLinkInput('')
+
+    const createdLink = useLinksStore.getState().links.find((l) => l.id === newLinkId)
+    if (createdLink) {
+      pushLink(createdLink).catch((err) => {
+        console.warn('[HomeScreen] Failed to push link to Supabase:', err)
+      })
+    }
   }
 
   // Floating "+" add button pulse
@@ -724,6 +778,11 @@ function HomeScreenContent() {
             subtitle="Review now"
             styles={styles}
             onPress={() => router.push('/review')}
+            onDismiss={() => {
+              markAllReviewed().catch((err) => {
+                console.warn('[HomeScreen] Failed to mark all reviewed:', err)
+              })
+            }}
           />
         )}
 
@@ -785,9 +844,12 @@ function HomeScreenContent() {
         visible={isCreateModalVisible}
         onClose={() => setIsCreateModalVisible(false)}
         onCreate={(data) => {
-          addCollection(data)
+          const newCollection = addCollection(data)
           if (hapticsEnabled) Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success)
           setIsCreateModalVisible(false)
+          pushCollection(newCollection).catch((err) => {
+            console.warn('[HomeScreen] Failed to push collection to Supabase:', err)
+          })
         }}
       />
     </View>

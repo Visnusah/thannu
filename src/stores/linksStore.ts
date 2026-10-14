@@ -38,6 +38,7 @@ type LinksState = {
   updateLink: (id: string, updates: LinkUpdates) => void
   removeLink: (id: string) => void
   markReviewed: (id: string) => void
+  markAllReviewed: () => void
   moveLink: (id: string, collectionId: string) => void
   clearLinks: () => void
 }
@@ -107,6 +108,12 @@ export const useLinksStore = create<LinksState>()(
         set((state) => ({
           links: state.links.map((link) =>
             link.id === id ? { ...link, reviewedAt: link.reviewedAt || Date.now() } : link
+          ),
+        })),
+      markAllReviewed: () =>
+        set((state) => ({
+          links: state.links.map((link) =>
+            link.reviewedAt === null ? { ...link, reviewedAt: Date.now() } : link
           ),
         })),
       moveLink: (id, collectionId) =>

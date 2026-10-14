@@ -24,10 +24,8 @@ import { useAuth } from '@/hooks/useAuth'
 import {
   fetchCollections,
   fetchLinks,
-  insertCollection,
-  insertLink,
-  updateCollection,
-  updateLink,
+  upsertCollections,
+  upsertLinks,
   deleteCollection as dbDeleteCollection,
   deleteLink as dbDeleteLink,
   markLinkReviewed as dbMarkLinkReviewed,
@@ -41,6 +39,8 @@ import {
   fetchPinnedLinks as dbFetchPinned,
   fetchUserStats,
   deleteAllUserData as dbDeleteAllData,
+  subscribeToCollections,
+  subscribeToLinks,
   isSupabaseConfigured,
   type LinkRow,
   type CollectionRow,
@@ -104,7 +104,7 @@ function linkToSyncInput(l: LinkRecord) {
     description: l.description,
     domain: l.domain,
     imageUrl: l.imageUrl,
-    collectionId: l.collectionId,
+    collectionId: l.collectionId && l.collectionId !== UNSORTED_COLLECTION_ID ? l.collectionId : null,
     tags: l.tags,
     notes: l.notes,
     reviewedAt: l.reviewedAt,
@@ -135,6 +135,9 @@ export type SupabaseSyncHook = {
 
   /** Mark a link reviewed in Supabase and the local store */
   markLinkReviewed: (id: string) => Promise<void>
+
+  /** Mark all unreviewed links as reviewed */
+  markAllReviewed: () => Promise<void>
 
   /** Toggle pin state of a link */
   toggleLinkPin: (id: string) => Promise<void>
@@ -231,138 +234,191 @@ export function useSupabaseSync(): SupabaseSyncHook {
     useLinksStore.setState({ links: mappedLinks })
   }, [userId])
 
+  // ── Automatic initial pull & Realtime synchronization ──
+  useEffect(() => {
+    if (!isSupabaseConfigured || !userId) return
+
+    pull().catch((err) => {
+      console.warn('[useSupabaseSync] Initial pull failed:', err)
+    })
+
+    const unsubCollections = subscribeToCollections(userId, (event, newRow, oldRow) => {
+      if (event === 'INSERT' || event === 'UPDATE') {
+        if (newRow) {
+          const mapped = rowToCollection(newRow)
+          useCollectionsStore.setState((state) => {
+            const exists = state.collections.some((c) => c.id === mapped.id)
+            return {
+              collections: exists
+                ? state.collections.map((c) => (c.id === mapped.id ? mapped : c))
+                : [...state.collections, mapped],
+            }
+          })
+        }
+      } else if (event === 'DELETE') {
+        if (oldRow) {
+          useCollectionsStore.setState((state) => ({
+            collections: state.collections.filter((c) => c.id !== oldRow.id || c.isSystem),
+          }))
+        }
+      }
+    })
+
+    const unsubLinks = subscribeToLinks(userId, (event, newRow, oldRow) => {
+      if (event === 'INSERT' || event === 'UPDATE') {
+        if (newRow) {
+          const mapped = rowToLink(newRow)
+          useLinksStore.setState((state) => {
+            const exists = state.links.some((l) => l.id === mapped.id)
+            return {
+              links: exists
+                ? state.links.map((l) => (l.id === mapped.id ? mapped : l))
+                : [mapped, ...state.links],
+            }
+          })
+        }
+      } else if (event === 'DELETE') {
+        if (oldRow) {
+          useLinksStore.setState((state) => ({
+            links: state.links.filter((l) => l.id !== oldRow.id),
+          }))
+        }
+      }
+    })
+
+    return () => {
+      unsubCollections()
+      unsubLinks()
+    }
+  }, [userId, pull])
+
   // ── pushCollection ────────────────────────────────────
 
   const pushCollection = useCallback(
     async (collection: Collection): Promise<void> => {
-      const uid = guard('pushCollection')
       if (collection.isSystem) return // never sync system collections
-
-      await insertCollection(uid, collectionToSyncInput(collection)).catch(async (err) => {
-        // If insert fails due to conflict, fall back to update
-        if (err?.message?.includes('duplicate') || err?.message?.includes('conflict')) {
-          await updateCollection(uid, collection.id, {
-            name: collection.name,
-            icon: collection.icon,
-            color: collection.color,
-            item_count: collection.itemCount,
-            new_count: collection.newCount,
-            priority: collection.priority,
-          })
-        } else {
-          throw err
-        }
-      })
+      if (!isSupabaseConfigured || !userId) return
+      await upsertCollections(userId, [collectionToSyncInput(collection)])
     },
-    [guard]
+    [userId]
   )
 
   // ── pushLink ──────────────────────────────────────────
 
   const pushLink = useCallback(
     async (link: LinkRecord): Promise<void> => {
-      const uid = guard('pushLink')
-
-      await insertLink(uid, linkToSyncInput(link)).catch(async (err) => {
-        if (err?.message?.includes('duplicate') || err?.message?.includes('conflict')) {
-          await updateLink(uid, link.id, {
-            title: link.title,
-            description: link.description,
-            domain: link.domain,
-            image_url: link.imageUrl,
-            collection_id: link.collectionId === UNSORTED_COLLECTION_ID ? null : link.collectionId,
-            tags: link.tags,
-            notes: link.notes,
-            reviewed_at: link.reviewedAt ? new Date(link.reviewedAt).toISOString() : null,
-            is_pinned: link.isPinned,
-          })
-        } else {
-          throw err
-        }
-      })
+      if (!isSupabaseConfigured || !userId) return
+      await upsertLinks(userId, [linkToSyncInput(link)])
     },
-    [guard]
+    [userId]
   )
 
   // ── deleteCollection ──────────────────────────────────
 
   const deleteCollection = useCallback(
     async (id: string): Promise<void> => {
-      const uid = guard('deleteCollection')
-      await dbDeleteCollection(uid, id)
-      // Remove from local store
+      // Remove from local store first
       collectionsStoreRef.current.removeCollection(id)
+      if (!isSupabaseConfigured || !userId) return
+      await dbDeleteCollection(userId, id)
     },
-    [guard]
+    [userId]
   )
 
   // ── deleteLink ────────────────────────────────────────
 
   const deleteLink = useCallback(
     async (id: string): Promise<void> => {
-      const uid = guard('deleteLink')
-      await dbDeleteLink(uid, id)
       linksStoreRef.current.removeLink(id)
+      if (!isSupabaseConfigured || !userId) return
+      await dbDeleteLink(userId, id)
     },
-    [guard]
+    [userId]
   )
 
   // ── markLinkReviewed ──────────────────────────────────
 
   const markLinkReviewed = useCallback(
     async (id: string): Promise<void> => {
-      const uid = guard('markLinkReviewed')
-      const row = await dbMarkLinkReviewed(uid, id)
-      linksStoreRef.current.updateLink(id, { reviewedAt: new Date(row.reviewed_at!).getTime() })
+      linksStoreRef.current.updateLink(id, { reviewedAt: Date.now() })
+      if (!isSupabaseConfigured || !userId) return
+      const row = await dbMarkLinkReviewed(userId, id)
+      if (row?.reviewed_at) {
+        linksStoreRef.current.updateLink(id, { reviewedAt: new Date(row.reviewed_at).getTime() })
+      }
     },
-    [guard]
+    [userId]
   )
+
+  // ── markAllReviewed ───────────────────────────────────
+
+  const markAllReviewed = useCallback(async (): Promise<void> => {
+    const unreviewed = linksStoreRef.current.links.filter((l) => l.reviewedAt === null)
+    linksStoreRef.current.markAllReviewed()
+    if (!isSupabaseConfigured || !userId) return
+    await Promise.all(
+      unreviewed.map((l) => dbMarkLinkReviewed(userId, l.id).catch(() => {}))
+    )
+  }, [userId])
 
   // ── toggleLinkPin ─────────────────────────────────────
 
   const toggleLinkPin = useCallback(
     async (id: string): Promise<void> => {
-      const uid = guard('toggleLinkPin')
-      const row = await dbToggleLinkPin(uid, id)
+      const current = linksStoreRef.current.links.find((l) => l.id === id)
+      if (current) {
+        linksStoreRef.current.updateLink(id, { isPinned: !current.isPinned })
+      }
+      if (!isSupabaseConfigured || !userId) return
+      const row = await dbToggleLinkPin(userId, id)
       linksStoreRef.current.updateLink(id, { isPinned: row.is_pinned })
     },
-    [guard]
+    [userId]
   )
 
   // ── moveLink ──────────────────────────────────────────
 
   const moveLink = useCallback(
     async (linkId: string, targetCollectionId: string | null): Promise<void> => {
-      const uid = guard('moveLink')
-      await dbMoveLink(uid, linkId, targetCollectionId)
       linksStoreRef.current.moveLink(
         linkId,
         targetCollectionId ?? UNSORTED_COLLECTION_ID
       )
+      if (!isSupabaseConfigured || !userId) return
+      await dbMoveLink(userId, linkId, targetCollectionId)
     },
-    [guard]
+    [userId]
   )
 
   // ── addTagsToLink ─────────────────────────────────────
 
   const addTagsToLink = useCallback(
     async (linkId: string, tags: string[]): Promise<void> => {
-      const uid = guard('addTagsToLink')
-      const row = await dbAddTags(uid, linkId, tags)
+      const current = linksStoreRef.current.links.find((l) => l.id === linkId)
+      if (current) {
+        const merged = Array.from(new Set([...current.tags, ...tags]))
+        linksStoreRef.current.updateLink(linkId, { tags: merged })
+      }
+      if (!isSupabaseConfigured || !userId) return
+      const row = await dbAddTags(userId, linkId, tags)
       linksStoreRef.current.updateLink(linkId, { tags: row.tags })
     },
-    [guard]
+    [userId]
   )
 
   // ── removeTagFromLink ─────────────────────────────────
 
   const removeTagFromLink = useCallback(
     async (linkId: string, tag: string): Promise<void> => {
-      const uid = guard('removeTagFromLink')
-      const row = await dbRemoveTag(uid, linkId, tag)
+      const current = linksStoreRef.current.links.find((l) => l.id === linkId)
+      if (current) {
+        linksStoreRef.current.updateLink(linkId, { tags: current.tags.filter((t) => t !== tag) })
+      }
+      if (!isSupabaseConfigured || !userId) return
+      const row = await dbRemoveTag(userId, linkId, tag)
       linksStoreRef.current.updateLink(linkId, { tags: row.tags })
     },
-    [guard]
+    [userId]
   )
 
   // ── searchLinks ───────────────────────────────────────
@@ -430,6 +486,7 @@ export function useSupabaseSync(): SupabaseSyncHook {
     deleteCollection,
     deleteLink,
     markLinkReviewed,
+    markAllReviewed,
     toggleLinkPin,
     moveLink,
     addTagsToLink,

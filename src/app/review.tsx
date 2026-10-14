@@ -3,6 +3,7 @@ import * as Linking from 'expo-linking'
 import { useRouter } from 'expo-router'
 import { useState } from 'react'
 import {
+  PanResponder,
   Pressable,
   StyleSheet,
   View,
@@ -11,6 +12,7 @@ import Animated, { FadeIn, SlideInRight, SlideOutLeft, useAnimatedStyle, useShar
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
 import { Text } from '@/components/ui'
+import { useSupabaseSync } from '@/hooks'
 import { useCollectionsStore, useLinksStore } from '@/stores'
 import {
   spacing,
@@ -56,15 +58,33 @@ export default function ReviewScreen() {
   
   const [currentIndex, setCurrentIndex] = useState(0)
   const isComplete = currentIndex >= unreviewedLinks.length
+  const { markLinkReviewed: syncMarkReviewed } = useSupabaseSync()
 
   const handleNext = () => {
     const item = unreviewedLinks[currentIndex]
-    if (item) markReviewed(item.id)
+    if (item) {
+      markReviewed(item.id)
+      syncMarkReviewed(item.id).catch((err) => {
+        console.warn('[ReviewScreen] Failed to mark link reviewed:', err)
+      })
+    }
   }
 
   const handlePrev = () => {
-    if (currentIndex > 0) setCurrentIndex(prev => prev - 1)
+    if (currentIndex > 0) setCurrentIndex((prev) => prev - 1)
   }
+
+  const cardPanResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) =>
+      Math.abs(gestureState.dx) > 15 && Math.abs(gestureState.dy) < 30,
+    onPanResponderRelease: (_, gestureState) => {
+      if (gestureState.dx > 50 || gestureState.vx > 0.3) {
+        handleNext()
+      } else if (gestureState.dx < -50 || gestureState.vx < -0.3) {
+        handlePrev()
+      }
+    },
+  })
 
   // Common header
   const renderHeader = () => (
@@ -113,7 +133,7 @@ export default function ReviewScreen() {
         </View>
 
         {/* Card */}
-        <View style={styles.cardContainer}>
+        <View style={styles.cardContainer} {...cardPanResponder.panHandlers}>
           <View style={[styles.card, { backgroundColor: cardColor }]}>
             {/* Domain */}
             <View style={styles.domainRow}>

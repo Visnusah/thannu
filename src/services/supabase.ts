@@ -220,6 +220,12 @@ export function setFirebaseTokenProvider(provider: FirebaseTokenProvider | null)
   }
 }
 
+// By default, Supabase requests use the publishable key.
+// Set EXPO_PUBLIC_USE_FIREBASE_JWT_IN_SUPABASE=true only if you have configured
+// Firebase under Third-Party Auth in your Supabase Dashboard.
+const useFirebaseJwtInSupabase =
+  process.env.EXPO_PUBLIC_USE_FIREBASE_JWT_IN_SUPABASE === 'true'
+
 export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured
   ? createClient<Database>(supabaseUrl, supabasePublishableKey, {
       auth: {
@@ -227,7 +233,9 @@ export const supabase: SupabaseClient<Database> | null = isSupabaseConfigured
         autoRefreshToken: false,
         detectSessionInUrl: false,
       },
-      accessToken: async () => firebaseTokenProvider?.() ?? null,
+      ...(useFirebaseJwtInSupabase && {
+        accessToken: async () => firebaseTokenProvider?.() ?? null,
+      }),
     })
   : null
 
@@ -580,8 +588,7 @@ export async function upsertLinks(ownerId: string, links: LinkSyncInput[]): Prom
   const rows: LinkInsert[] = links.map((link) => ({
     id: link.id,
     user_id: userId,
-    collection_id:
-      !link.collectionId || link.collectionId === 'unsorted' ? null : link.collectionId,
+    collection_id: link.collectionId && link.collectionId !== 'unsorted' ? link.collectionId : null,
     url: link.url,
     title: link.title ?? '',
     description: link.description ?? '',
@@ -610,8 +617,7 @@ export async function insertLink(ownerId: string, link: LinkSyncInput): Promise<
   const row: LinkInsert = {
     id: link.id,
     user_id: userId,
-    collection_id:
-      !link.collectionId || link.collectionId === 'unsorted' ? null : link.collectionId,
+    collection_id: link.collectionId && link.collectionId !== 'unsorted' ? link.collectionId : null,
     url: link.url,
     title: link.title ?? '',
     description: link.description ?? '',
@@ -841,9 +847,11 @@ export function subscribeToLinks(
   ) => void
 ): () => void {
   const userId = requireOwnerId(ownerId)
+  const client = getSupabaseClient()
+  const channelName = `links_${userId}_${Math.random().toString(36).slice(2, 8)}`
 
-  const channel = getSupabaseClient()
-    .channel(`links:${userId}`)
+  const channel = client
+    .channel(channelName)
     .on(
       'postgres_changes',
       {
@@ -863,7 +871,7 @@ export function subscribeToLinks(
     .subscribe()
 
   return () => {
-    getSupabaseClient().removeChannel(channel)
+    client.removeChannel(channel)
   }
 }
 
@@ -880,9 +888,11 @@ export function subscribeToCollections(
   ) => void
 ): () => void {
   const userId = requireOwnerId(ownerId)
+  const client = getSupabaseClient()
+  const channelName = `collections_${userId}_${Math.random().toString(36).slice(2, 8)}`
 
-  const channel = getSupabaseClient()
-    .channel(`collections:${userId}`)
+  const channel = client
+    .channel(channelName)
     .on(
       'postgres_changes',
       {
@@ -902,6 +912,6 @@ export function subscribeToCollections(
     .subscribe()
 
   return () => {
-    getSupabaseClient().removeChannel(channel)
+    client.removeChannel(channel)
   }
 }

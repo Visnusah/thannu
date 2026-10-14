@@ -2,6 +2,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { useRouter, useLocalSearchParams } from 'expo-router'
 import { useMemo } from 'react'
 import {
+  Alert,
   Pressable,
   StyleSheet,
   View,
@@ -11,7 +12,7 @@ import Animated, { FadeInDown, useAnimatedStyle, useSharedValue, withTiming } fr
 import { Screen } from '@/components'
 import { ScreenErrorBoundary } from '@/components/error'
 import { Text } from '@/components/ui'
-import { useColors, useResponsive, type ScreenSize } from '@/hooks'
+import { useColors, useResponsive, type ScreenSize, useSupabaseSync } from '@/hooks'
 import {
   gridGap,
   minTouchTarget,
@@ -270,6 +271,45 @@ function CollectionScreenContent() {
   const title = collection ? collection.name : id || 'Collection'
   const collectionLinks = links.filter((link) => link.collectionId === id)
 
+  const { deleteCollection } = useSupabaseSync()
+
+  const handleOptions = () => {
+    if (!collection) return
+    if (collection.isSystem) {
+      Alert.alert(collection.name, 'This is a system collection and cannot be deleted.')
+      return
+    }
+
+    Alert.alert(collection.name, 'Collection Options', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete Collection',
+        style: 'destructive',
+        onPress: () => {
+          Alert.alert(
+            'Delete Collection?',
+            `Are you sure you want to delete "${collection.name}"? Links will be kept in Unsorted.`,
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'Delete',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await deleteCollection(collection.id)
+                  } catch (err) {
+                    console.warn('Failed to delete collection:', err)
+                  }
+                  router.back()
+                },
+              },
+            ]
+          )
+        },
+      },
+    ])
+  }
+
   return (
     <Screen scroll>
       {/* ── Header ── */}
@@ -294,6 +334,7 @@ function CollectionScreenContent() {
           <IconButton 
             icon="ellipsis-horizontal" 
             accessibilityLabel="More options" 
+            onPress={handleOptions}
           />
         </View>
       </View>
