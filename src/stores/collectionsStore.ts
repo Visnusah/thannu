@@ -14,6 +14,7 @@ export type Collection = {
   itemCount: number
   newCount: number
   priority: CollectionPriority
+  parentId?: string | null
   createdAt: number
   isSystem?: boolean
 }
@@ -26,6 +27,7 @@ export const UNSORTED_COLLECTION: Collection = {
   itemCount: 0,
   newCount: 0,
   priority: 'none',
+  parentId: null,
   createdAt: 0,
   isSystem: true,
 }
@@ -37,7 +39,8 @@ const MOCK_COLLECTION_IDS = new Set(['1', '2', '3', '4'])
 
 type CollectionsState = {
   collections: Collection[]
-  addCollection: (collection: { name: string; color: string; icon: string }) => Collection
+  addCollection: (collection: { name: string; color: string; icon: string; parentId?: string | null }) => Collection
+  updateCollection: (id: string, updates: Partial<Omit<Collection, 'id' | 'createdAt'>>) => void
   removeCollection: (id: string) => void
   clearNonSystemCollections: () => void
   ensureUnsortedCollection: () => Collection
@@ -56,15 +59,35 @@ export const useCollectionsStore = create<CollectionsState>()(
           itemCount: 0,
           newCount: 0,
           priority: 'none',
+          parentId: data.parentId ?? null,
           createdAt: Date.now(),
         }
         set((state) => ({ collections: [...state.collections, newCollection] }))
         return newCollection
       },
-      removeCollection: (id) =>
+      updateCollection: (id, updates) =>
         set((state) => ({
-          collections: state.collections.filter((c) => c.id !== id || c.isSystem),
+          collections: state.collections.map((collection) =>
+            collection.id === id ? { ...collection, ...updates } : collection
+          ),
         })),
+      removeCollection: (id) =>
+        set((state) => {
+          const idsToRemove = new Set([id])
+          let changed = true
+          while (changed) {
+            changed = false
+            for (const collection of state.collections) {
+              if (collection.parentId && idsToRemove.has(collection.parentId) && !idsToRemove.has(collection.id)) {
+                idsToRemove.add(collection.id)
+                changed = true
+              }
+            }
+          }
+          return {
+            collections: state.collections.filter((collection) => !idsToRemove.has(collection.id) || collection.isSystem),
+          }
+        }),
       clearNonSystemCollections: () =>
         set((state) => ({
           collections: state.collections.filter((c) => c.isSystem),

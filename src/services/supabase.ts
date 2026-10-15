@@ -34,6 +34,7 @@ export type CollectionRow = {
   item_count: number
   new_count: number
   priority: CollectionPriority
+  parent_id: string | null
   created_at: string
   updated_at: string
 }
@@ -75,6 +76,7 @@ export type CollectionInsert = {
   item_count?: number
   new_count?: number
   priority?: CollectionPriority
+  parent_id?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -88,6 +90,7 @@ export type CollectionUpdate = {
   item_count?: number
   new_count?: number
   priority?: CollectionPriority
+  parent_id?: string | null
   created_at?: string
   updated_at?: string
 }
@@ -179,6 +182,7 @@ export type CollectionSyncInput = {
   itemCount?: number
   newCount?: number
   priority?: CollectionPriority
+  parentId?: string | null
   createdAt?: number | string
 }
 
@@ -329,6 +333,7 @@ export async function upsertCollections(
     item_count: c.itemCount ?? 0,
     new_count: c.newCount ?? 0,
     priority: c.priority ?? ('none' as CollectionPriority),
+    ...(c.parentId ? { parent_id: c.parentId } : {}),
     ...(c.createdAt != null ? { created_at: toIsoDate(c.createdAt) as string } : {}),
   }))
 
@@ -357,6 +362,7 @@ export async function insertCollection(
     item_count: collection.itemCount ?? 0,
     new_count: collection.newCount ?? 0,
     priority: collection.priority ?? ('none' as CollectionPriority),
+    ...(collection.parentId ? { parent_id: collection.parentId } : {}),
     ...(collection.createdAt != null
       ? { created_at: toIsoDate(collection.createdAt) as string }
       : {}),

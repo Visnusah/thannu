@@ -2,12 +2,14 @@ import { Ionicons } from '@expo/vector-icons'
 import * as Linking from 'expo-linking'
 import { useLocalSearchParams, useRouter } from 'expo-router'
 import { useState } from 'react'
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native'
+import { Alert, Image, Pressable, ScrollView, Share, StyleSheet, View } from 'react-native'
 import Animated, { FadeIn, SlideInDown, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
 
+import { CollectionPickerModal, LinkEditModal, type LinkEditValues } from '@/components'
 import { Text } from '@/components/ui'
-import { useColors } from '@/hooks'
+import { useColors, useSupabaseSync } from '@/hooks'
+import { fetchLinkMetadata } from '@/services/metadata'
 import { useCollectionsStore, useLinksStore } from '@/stores'
 import {
   minTouchTarget,
@@ -96,9 +98,13 @@ export default function SaveDetailScreen() {
   const colors = useColors()
   const insets = useSafeAreaInsets()
   const [isExpanded, setIsExpanded] = useState(false)
+  const [isEditVisible, setIsEditVisible] = useState(false)
+  const [isMoveVisible, setIsMoveVisible] = useState(false)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const link = useLinksStore((state) => state.links.find((item) => item.id === id))
-  const removeLink = useLinksStore((state) => state.removeLink)
+  const updateLink = useLinksStore((state) => state.updateLink)
   const collections = useCollectionsStore((state) => state.collections)
+  const { deleteLink: deleteRemoteLink, moveLink, toggleLinkPin, pushLink } = useSupabaseSync()
   const openLinkScale = useSharedValue(1)
   const openLinkAnim = useAnimatedStyle(() => ({ transform: [{ scale: openLinkScale.get() }] }))
 
@@ -119,19 +125,74 @@ export default function SaveDetailScreen() {
   const collectionName = collection?.name || 'Unsorted'
   const collectionColor = collection?.color || thannuColors.slate
   const createdDate = new Date(link.createdAt).toLocaleDateString()
-  const openLink = () => void Linking.openURL(link.url)
+  const openLink = () => {
+    Linking.openURL(link.url).catch(() => {
+      Alert.alert('Unable to open link', 'Check your connection and try again.')
+    })
+  }
+  const shareLink = () => {
+    void Share.share({
+      title: link.title,
+      message: `${link.title}\n${link.url}`,
+      url: link.url,
+    }).catch(() => Alert.alert('Sharing unavailable', 'This device could not open the native share sheet.'))
+  }
   const deleteLink = () => {
     Alert.alert('Delete this save?', "You can't undo this.", [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: () => {
-          removeLink(link.id)
+        onPress: async () => {
+          try {
+            await deleteRemoteLink(link.id)
+          } catch (error) {
+            console.warn('[SaveDetail] Failed to delete link remotely:', error)
+          }
           router.back()
         },
       },
     ])
+  }
+
+  const saveEdits = (values: LinkEditValues) => {
+    updateLink(link.id, values)
+    const updated = useLinksStore.getState().links.find((item) => item.id === link.id)
+    if (updated) {
+      pushLink(updated).catch((error) => console.warn('[SaveDetail] Failed to sync edits:', error))
+    }
+    setIsEditVisible(false)
+  }
+
+  const handleMove = (targetCollection: (typeof collections)[number]) => {
+    setIsMoveVisible(false)
+    moveLink(link.id, targetCollection.id).then(() => {
+      Alert.alert('Link moved', `Saved to ${targetCollection.name}.`)
+    }).catch((error) => {
+      console.warn('[SaveDetail] Failed to move link:', error)
+      Alert.alert('Move failed', 'The link was kept in its current collection.')
+    })
+  }
+
+  const refreshMetadata = () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    fetchLinkMetadata(link.url)
+      .then((metadata) => {
+        updateLink(link.id, {
+          title: metadata.title || link.title,
+          description: metadata.description || link.description,
+          imageUrl: metadata.imageUrl ?? link.imageUrl,
+          domain: metadata.domain || link.domain,
+        })
+        const updated = useLinksStore.getState().links.find((item) => item.id === link.id)
+        if (updated) {
+          return pushLink(updated)
+        }
+      })
+      .then(() => Alert.alert('Link refreshed', 'Title, description, and thumbnail are up to date.'))
+      .catch(() => Alert.alert('Refresh unavailable', 'This platform did not expose metadata. Your saved link is unchanged.'))
+      .finally(() => setIsRefreshing(false))
   }
 
   return (
@@ -139,10 +200,15 @@ export default function SaveDetailScreen() {
       <ScrollView bounces={false} showsVerticalScrollIndicator={false}>
         {/* ── Hero Image Area ── */}
         <Animated.View entering={FadeIn.duration(400)} style={[styles.heroArea, { backgroundColor: collectionColor }] }>
+          {link.imageUrl && <Image source={{ uri: link.imageUrl }} style={styles.heroImage} resizeMode="cover" />}
           {/* Header Controls */}
           <View style={[styles.headerOverlay, { paddingTop: Math.max(insets.top, spacing.md) }]}>
             <IconButton icon="arrow-back" onPress={() => router.back()} accessibilityLabel="Go back" />
-            <IconButton icon="volume-mute-outline" onPress={() => {}} accessibilityLabel="Mute" />
+            <IconButton
+              icon={link.isPinned ? 'pin' : 'pin-outline'}
+              onPress={() => toggleLinkPin(link.id).catch((error) => console.warn('[SaveDetail] Failed to pin link:', error))}
+              accessibilityLabel={link.isPinned ? 'Unpin link' : 'Pin link'}
+            />
           </View>
         </Animated.View>
 
@@ -160,7 +226,7 @@ export default function SaveDetailScreen() {
           {/* Favicon & Domain */}
           <View style={styles.domainRow}>
             <View style={styles.favicon}>
-              <Ionicons name="logo-instagram" size={14} color="#fff" />
+              <Ionicons name="globe-outline" size={14} color="#fff" />
             </View>
             <Text style={[styles.domainText, { color: colors.text }]}>{link.domain}</Text>
           </View>
@@ -170,7 +236,7 @@ export default function SaveDetailScreen() {
             <Text style={[styles.title, { color: colors.text }]} numberOfLines={2}>
               {link.title}
             </Text>
-            <IconButton icon="pencil" onPress={() => {}} accessibilityLabel="Edit" />
+            <IconButton icon="pencil" onPress={() => setIsEditVisible(true)} accessibilityLabel="Edit link" />
           </View>
 
           {/* Badges Row */}
@@ -207,9 +273,9 @@ export default function SaveDetailScreen() {
 
           {/* Segmented Actions */}
           <View style={[styles.actionsRow, { shadowColor: colors.text, backgroundColor: colors.surface }]}>
-            <ActionButton icon="share-outline" label="Share" color={colors.text} isFirst onPress={() => void Linking.openURL(link.url)} />
-            <ActionButton icon="folder-outline" label="Move" color={colors.text} />
-            <ActionButton icon="refresh-outline" label="Refresh" color={colors.text} />
+            <ActionButton icon="share-outline" label="Share" color={colors.text} isFirst onPress={shareLink} />
+            <ActionButton icon="folder-outline" label="Move" color={colors.text} onPress={() => setIsMoveVisible(true)} />
+            <ActionButton icon="refresh-outline" label={isRefreshing ? 'Wait' : 'Refresh'} color={colors.text} onPress={refreshMetadata} />
             <ActionButton icon="trash-outline" label="Delete" color={thannuColors.coral} isLast onPress={deleteLink} />
           </View>
 
@@ -229,15 +295,39 @@ export default function SaveDetailScreen() {
             )}
           </View>
 
+          {link.notes ? (
+            <View style={styles.section}>
+              <Text style={[styles.sectionTitle, { color: colors.text }]}>NOTE</Text>
+              <Text style={[styles.bodyText, { color: colors.text }]}>{link.notes}</Text>
+            </View>
+          ) : null}
+
           {/* Tags Section */}
           <View style={[styles.section, { paddingBottom: Math.max(insets.bottom, 48) }]}>
             <Text style={[styles.sectionTitle, { color: colors.text }]}>TAGS</Text>
-            <Text style={[styles.bodyText, { color: colors.secondary }]}>
-              {link.tags.length > 0 ? link.tags.map((tag) => `#${tag}`).join('  ') : 'No tags added yet.'}
-            </Text>
+            <View style={styles.tagsRow}>
+              {link.tags.map((tag) => (
+                <View key={tag} style={[styles.tagChip, { backgroundColor: thannuColors.violetSoft, borderColor: colors.text }]}>
+                  <Text style={[styles.tagText, { color: colors.text }]}>#{tag}</Text>
+                </View>
+              ))}
+              {link.tags.length === 0 && <Text style={[styles.bodyText, { color: colors.secondary }]}>No tags added yet.</Text>}
+            </View>
+            <Pressable onPress={() => setIsEditVisible(true)} style={styles.editTagsButton} accessibilityRole="button" accessibilityLabel="Edit tags">
+              <Ionicons name="add-circle-outline" size={18} color={colors.text} />
+              <Text style={[styles.showMore, { color: colors.text }]}>Add or edit tags</Text>
+            </Pressable>
           </View>
         </Animated.View>
       </ScrollView>
+      <LinkEditModal visible={isEditVisible} link={link} onClose={() => setIsEditVisible(false)} onSave={saveEdits} />
+      <CollectionPickerModal
+        visible={isMoveVisible}
+        collections={collections}
+        currentCollectionId={link.collectionId}
+        onClose={() => setIsMoveVisible(false)}
+        onSelect={handleMove}
+      />
     </View>
   )
 }
@@ -279,6 +369,9 @@ const styles = StyleSheet.create({
   heroArea: {
     height: 320,
     width: '100%',
+  },
+  heroImage: {
+    ...StyleSheet.absoluteFill,
   },
   headerOverlay: {
     flexDirection: 'row',
@@ -443,6 +536,20 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: spacing.sm,
   },
+  tagsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  tagChip: {
+    borderWidth: strokeWidth.chip,
+    borderRadius: thannuRadius.pill,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 5,
+  },
+  tagText: { fontSize: 12, fontWeight: '800' },
+  editTagsButton: { flexDirection: 'row', alignItems: 'center', gap: spacing.xs },
   showMore: {
     fontSize: 14,
     fontWeight: '900',

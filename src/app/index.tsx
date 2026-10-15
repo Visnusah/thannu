@@ -4,8 +4,10 @@ import { Ionicons } from '@expo/vector-icons'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'expo-router'
 import {
+  Alert,
   PanResponder,
   Pressable,
+  Share,
   StyleSheet,
   TextInput,
   View,
@@ -45,6 +47,7 @@ import {
   thannuRadius,
   type Colors,
 } from '@/lib'
+import { fetchLinkMetadata } from '@/services/metadata'
 
 const priorityColor: Record<CollectionPriority, string> = {
   high: thannuColors.coral,
@@ -487,12 +490,18 @@ function CollectionCard({
   index,
   isActive,
   onActivate,
+  onDelete,
+  onShare,
+  onEdit,
 }: {
   item: Collection
   styles: ReturnType<typeof createStyles>
   index: number
   isActive: boolean
   onActivate: () => void
+  onDelete: () => void
+  onShare: () => void
+  onEdit: () => void
 }) {
   const router = useRouter()
   const colors = useColors()
@@ -620,7 +629,7 @@ function CollectionCard({
           style={isLeftColumn ? { top: -25, right: -25 } : { top: -25, left: -25 }}
           delay={50}
           isActive={isActive}
-          onPress={() => {}}
+           onPress={onDelete}
           styles={styles}
         />
         <FloatingActionButton
@@ -628,7 +637,7 @@ function CollectionCard({
           style={isLeftColumn ? { top: 15, right: -35 } : { top: 15, left: -35 }}
           delay={100}
           isActive={isActive}
-          onPress={() => {}}
+          onPress={onShare}
           styles={styles}
         />
         <FloatingActionButton
@@ -636,7 +645,7 @@ function CollectionCard({
           style={isLeftColumn ? { top: 55, right: -20 } : { top: 55, left: -20 }}
           delay={150}
           isActive={isActive}
-          onPress={() => {}}
+          onPress={onEdit}
           styles={styles}
         />
       </Pressable>
@@ -657,8 +666,9 @@ function HomeScreenContent() {
   const { collections, addCollection, ensureUnsortedCollection } = useCollectionsStore()
   const links = useLinksStore((state) => state.links)
   const addLink = useLinksStore((state) => state.addLink)
+  const updateLink = useLinksStore((state) => state.updateLink)
   const hapticsEnabled = useSettingsStore((state) => state.hapticsEnabled)
-  const { pushCollection, pushLink, markAllReviewed } = useSupabaseSync()
+  const { pushCollection, pushLink, markAllReviewed, deleteCollection } = useSupabaseSync()
 
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
   const [isCreateModalVisible, setIsCreateModalVisible] = useState(false)
@@ -693,7 +703,47 @@ function HomeScreenContent() {
       pushLink(createdLink).catch((err) => {
         console.warn('[HomeScreen] Failed to push link to Supabase:', err)
       })
+
+      // Enrich the local save after the instant save succeeds. Some social
+      // platforms block metadata requests, so failure must never undo the URL.
+      void fetchLinkMetadata(url)
+        .then((metadata) => {
+          updateLink(newLinkId, {
+            title: metadata.title || createdLink.title,
+            description: metadata.description || createdLink.description,
+            imageUrl: metadata.imageUrl ?? createdLink.imageUrl,
+            domain: metadata.domain || createdLink.domain,
+          })
+          const enrichedLink = useLinksStore.getState().links.find((l) => l.id === newLinkId)
+          if (enrichedLink) return pushLink(enrichedLink)
+        })
+        .catch((err) => {
+          console.warn('[HomeScreen] Metadata enrichment failed:', err)
+        })
     }
+  }
+
+  const handleCollectionShare = (collection: Collection) => {
+    const items = links.filter((link) => link.collectionId === collection.id)
+    if (items.length === 0) {
+      Alert.alert('Nothing to share', 'Add a link to this collection first.')
+      return
+    }
+    const message = [collection.name, ...items.map((item) => `${item.title}\n${item.url}`)].join('\n\n')
+    void Share.share({ title: collection.name, message }).catch(() => {
+      Alert.alert('Sharing unavailable', 'This device could not open the native share sheet.')
+    })
+  }
+
+  const handleCollectionDelete = (collection: Collection) => {
+    if (collection.isSystem) {
+      Alert.alert('System collection', 'Unsorted cannot be deleted.')
+      return
+    }
+    Alert.alert('Delete collection?', `Delete ${collection.name}? Links will move to Unsorted.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deleteCollection(collection.id).catch((error) => console.warn('[HomeScreen] Delete failed:', error)) },
+    ])
   }
 
   // Floating "+" add button pulse
@@ -746,7 +796,7 @@ function HomeScreenContent() {
               maxFontSizeMultiplier={1.2}
               value={linkInput}
               onChangeText={setLinkInput}
-              onSubmitEditing={handleSave}
+              onSubmitEditing={() => handleSave()}
             />
             <Pressable
               accessibilityRole="button"
@@ -833,6 +883,9 @@ function HomeScreenContent() {
                     index={index}
                     isActive={activeCardId === displayItem.id}
                     onActivate={() => setActiveCardId(displayItem.id)}
+                    onDelete={() => handleCollectionDelete(displayItem)}
+                    onShare={() => handleCollectionShare(displayItem)}
+                    onEdit={() => router.push(`/collection/${displayItem.id}` as any)}
                   />
                 )
               })}

@@ -5,6 +5,7 @@ import { Alert } from 'react-native'
 
 import { useAuth, useSupabaseSync } from '@/hooks'
 import { extractSharedUrls } from '@/lib/incomingShare'
+import { fetchLinkMetadata } from '@/services/metadata'
 import { useCollectionsStore, useLinksStore } from '@/stores'
 
 /**
@@ -50,6 +51,7 @@ function IncomingShareProcessor() {
   const ensureUnsortedCollection = useCollectionsStore((state) => state.ensureUnsortedCollection)
   const links = useLinksStore((state) => state.links)
   const addLink = useLinksStore((state) => state.addLink)
+  const updateLink = useLinksStore((state) => state.updateLink)
   const { pushLink } = useSupabaseSync()
   const processedPayloadKeyRef = useRef<string | null>(null)
 
@@ -108,24 +110,43 @@ function IncomingShareProcessor() {
     // Local persistence succeeds even when the network is unavailable. A
     // later sync can reconcile these records, so a Supabase failure should not
     // make the user repeat the share action and create a duplicate.
-    Promise.all(createdLinks.map((link) => pushLink(link).catch((error) => {
-      console.warn('[ShareReceiver] Failed to sync shared link:', error)
-    }))).then(() => {
-      const savedCount = createdLinks.length
-      const message = savedCount > 0
-        ? `${savedCount} ${savedCount === 1 ? 'link was' : 'links were'} saved to Unsorted.`
-        : 'That link is already in your library.'
+    void Promise.all(createdLinks.map(async (link) => {
+      await pushLink(link).catch((error) => {
+        console.warn('[ShareReceiver] Failed to sync shared link:', error)
+      })
 
-      Alert.alert('Share received', message, [
-        { text: 'OK', onPress: () => router.replace('/(tabs)' as never) },
-      ])
-    })
+      try {
+        const metadata = await fetchLinkMetadata(link.url)
+        updateLink(link.id, {
+          title: metadata.title || link.title,
+          description: metadata.description || link.description,
+          imageUrl: metadata.imageUrl ?? link.imageUrl,
+          domain: metadata.domain || link.domain,
+        })
+        const enriched = useLinksStore.getState().links.find((item) => item.id === link.id)
+        if (enriched) {
+          await pushLink(enriched)
+        }
+      } catch (error) {
+        console.warn('[ShareReceiver] Metadata enrichment failed:', error)
+      }
+    }))
+
+    const savedCount = createdLinks.length
+    const message = savedCount > 0
+      ? `${savedCount} ${savedCount === 1 ? 'link was' : 'links were'} saved to Unsorted. Metadata will finish in the background.`
+      : 'That link is already in your library.'
+
+    Alert.alert('Share received', message, [
+      { text: 'OK', onPress: () => router.replace('/(tabs)' as never) },
+    ])
   }, [
     addLink,
     clearSharedPayloads,
     ensureUnsortedCollection,
     isResolving,
     links,
+    updateLink,
     resolvedSharedPayloads,
     refreshSharePayloads,
     router,

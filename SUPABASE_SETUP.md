@@ -37,12 +37,19 @@ Apply this migration in the Supabase SQL Editor or with the Supabase CLI:
 supabase/migrations/20261011000000_create_collections_and_links.sql
 ```
 
+For nested collections, also apply:
+
+```text
+supabase/migrations/20261015000000_add_collection_parent_id.sql
+```
+
 It creates:
 
 - `public.collections`
 - `public.links`
 - indexes and `updated_at` triggers
 - row-level security policies keyed to the Firebase JWT `sub` claim
+- `parent_id` support for sub-collections
 
 The migration is intentionally tracked as SQL instead of embedding a database
 password in the repository.

@@ -36,10 +36,20 @@ const COLLECTION_ICONS = [
 type CreateCollectionModalProps = {
   visible: boolean
   onClose: () => void
-  onCreate: (data: { name: string; color: string; icon: string }) => void
+  onCreate: (data: { name: string; color: string; icon: string; parentId?: string | null }) => void
+  parentId?: string | null
+  title?: string
+  submitLabel?: string
 }
 
-export function CreateCollectionModal({ visible, onClose, onCreate }: CreateCollectionModalProps) {
+export function CreateCollectionModal({
+  visible,
+  onClose,
+  onCreate,
+  parentId = null,
+  title = 'Add new collection',
+  submitLabel = 'Create collection',
+}: CreateCollectionModalProps) {
   const colors = useColors()
   const { isSmall } = useResponsive()
 
@@ -99,7 +109,7 @@ export function CreateCollectionModal({ visible, onClose, onCreate }: CreateColl
           {/* Header */}
           <View style={styles.header}>
             <Text variant="h3" style={{ color: colors.text, fontWeight: '800' }}>
-              Add new collection
+              {title}
             </Text>
             <Pressable
               style={[
@@ -220,12 +230,12 @@ export function CreateCollectionModal({ visible, onClose, onCreate }: CreateColl
               disabled={!name.trim()}
               onPress={() => {
                 if (name.trim()) {
-                  onCreate({ name: name.trim(), color: selectedColor, icon: selectedIcon })
+                   onCreate({ name: name.trim(), color: selectedColor, icon: selectedIcon, parentId })
                 }
               }}
             >
               <Text style={[styles.createBtnText, { color: colors.text }]}>
-                Create collection
+                {submitLabel}
               </Text>
             </Pressable>
           </View>

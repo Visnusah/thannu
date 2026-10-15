@@ -62,6 +62,7 @@ function rowToCollection(row: CollectionRow): Collection {
     itemCount: row.item_count,
     newCount: row.new_count,
     priority: row.priority,
+    parentId: row.parent_id,
     createdAt: new Date(row.created_at).getTime(),
   }
 }
@@ -92,6 +93,7 @@ function collectionToSyncInput(c: Collection) {
     itemCount: c.itemCount,
     newCount: c.newCount,
     priority: c.priority,
+    parentId: c.parentId ?? null,
     createdAt: c.createdAt,
   }
 }
@@ -317,8 +319,27 @@ export function useSupabaseSync(): SupabaseSyncHook {
 
   const deleteCollection = useCallback(
     async (id: string): Promise<void> => {
+      const deletedCollectionIds = new Set([id])
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const collection of collectionsStoreRef.current.collections) {
+          if (collection.parentId && deletedCollectionIds.has(collection.parentId) && !deletedCollectionIds.has(collection.id)) {
+            deletedCollectionIds.add(collection.id)
+            changed = true
+          }
+        }
+      }
+
       // Remove from local store first
       collectionsStoreRef.current.removeCollection(id)
+      useLinksStore.setState((state) => ({
+        links: state.links.map((link) =>
+          deletedCollectionIds.has(link.collectionId)
+            ? { ...link, collectionId: UNSORTED_COLLECTION_ID }
+            : link
+        ),
+      }))
       if (!isSupabaseConfigured || !userId) return
       await dbDeleteCollection(userId, id)
     },
