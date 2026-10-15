@@ -14,6 +14,7 @@ import { Platform } from 'react-native'
 import '@/global.css'
 
 import { ErrorBoundary } from '@/components/error'
+import { ShareReceiver } from '@/components/ShareReceiver'
 import { useAuth, useIsDark } from '@/hooks'
 import { useThemeHydration } from '@/stores'
 
@@ -33,6 +34,7 @@ export default function RootLayout() {
   // adding a route, so compare the segment as a runtime string here.
   const firstSegment = String(segments[0] ?? '')
   const isAuthRoute = firstSegment === 'login' || firstSegment === 'register'
+  const isShareRoute = firstSegment === 'share'
 
   useEffect(() => {
     if (hydrated && !authInitializing) {
@@ -43,12 +45,12 @@ export default function RootLayout() {
   useEffect(() => {
     if (!navigationState?.key || authInitializing) return
 
-    if (!user && !isAuthRoute) {
+    if (!user && !isAuthRoute && !isShareRoute) {
       router.replace('/login' as never)
     } else if (user && isAuthRoute) {
       router.replace('/(tabs)')
     }
-  }, [authInitializing, isAuthRoute, navigationState?.key, router, user])
+  }, [authInitializing, isAuthRoute, isShareRoute, navigationState?.key, router, user])
 
   // Hold the splash screen until the persisted theme mode has loaded, so the
   // first frame renders in the right theme. Web renders immediately — its
@@ -66,6 +68,7 @@ export default function RootLayout() {
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
           <Stack.Screen name="collection/[id]" options={{ headerShown: false }} />
           <Stack.Screen name="save/[id]" options={{ headerShown: false }} />
+          <Stack.Screen name="share" options={{ headerShown: false }} />
           <Stack.Screen
             name="review"
             options={{
@@ -75,6 +78,7 @@ export default function RootLayout() {
             }}
           />
         </Stack>
+        <ShareReceiver />
       </ThemeProvider>
     </ErrorBoundary>
   )
